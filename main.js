@@ -51,6 +51,7 @@ function refreshPages(){
   pageSelect.innerHTML=data.pages.map((p,i)=>
     `<option value="${i}" ${i===currentPage?'selected':''}>${esc(p.name)}</option>`
   ).join('');
+  updateWorkspaceContext();
 }
 function changePage(v){
   currentPage=parseInt(v,10)||0;
@@ -317,6 +318,20 @@ function render(){
     html+='</tr>';
   }
   sheet.innerHTML=html;
+  updateWorkspaceContext();
+}
+
+function updateWorkspaceContext(){
+  const page=data.pages[currentPage];
+  if(!page) return;
+  const name=page.name||'Kategorie';
+  const populated=page.items.filter(item=>item.title||item.beco||item.ref||item.photo||item.price||item.ek).length;
+  const title=document.getElementById('workspaceTitle');
+  const sheetCategory=document.getElementById('sheetCategory');
+  const completed=document.getElementById('completedCount');
+  if(title) title.textContent=name;
+  if(sheetCategory) sheetCategory.textContent=name;
+  if(completed) completed.textContent=populated;
 }
 
 function openEditor(i){
@@ -391,7 +406,7 @@ function closePhotoPicker(){
 function renderPhotoPickerGrid(){
   const grid=document.getElementById('photoLibGrid');
   const removeBtn=document.getElementById('removePhotoBtn');
-  if(removeBtn) removeBtn.style.display=(currentItem!==null&&items()[currentItem]?.photo)?'':'none';
+  if(removeBtn) removeBtn.hidden=!(currentItem!==null&&items()[currentItem]?.photo);
   const keys=Object.keys(data.library);
   if(!keys.length){
     grid.innerHTML='<p class="lib-empty">Noch keine Fotos in der Bibliothek.</p>';
@@ -456,7 +471,7 @@ function _showDialog(msg,inputVal,showCancel,dangerOk,okLabel){
   document.getElementById('cdCancel').style.display=showCancel?'':'none';
   const okBtn=document.getElementById('cdOk');
   okBtn.textContent=okLabel||'OK';
-  okBtn.className='cd-btn'+(dangerOk?' btn-danger':'');
+  okBtn.className='btn '+(dangerOk?'btn-danger':'btn-primary');
   openModal(document.getElementById('customDialog'));
   if(inputVal!==null) setTimeout(()=>{inp.focus();inp.select();},60);
   return new Promise(r=>{_cdResolve=r;});

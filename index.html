@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
 <meta charset="UTF-8">
@@ -7,128 +7,146 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="toolbar">
-  <div class="menu-wrap">
-    <button class="icon-btn" id="printMenuBtn" title="Drucken" aria-label="Drucken" onclick="togglePrintMenu(event)">🖨️</button>
-    <div class="menu" id="printMenu">
-      <button onclick="window.print(); closePrintMenu();">🖨️ Aktuelle Kategorie drucken</button>
-      <button onclick="printAllPages(); closePrintMenu();">📄 Alle Kategorien drucken</button>
+<!--
+THESIS: A dependable label-production workspace, not an icon-only utility bar.
+OWN-WORLD: Ink blue, slate neutrals, crisp outlines, restrained rounded controls.
+STORY: Office teams organize categories, edit products, and verify a print sheet quickly.
+FIRST VIEWPORT: Navigation and category controls frame a large, centered A4 proof with actions above.
+FORM: Operate-first split workspace with print preview as the permanent source of truth.
+-->
+<header class="app-header">
+  <a class="brand" href="#" aria-label="Furnituren Editor Startseite">
+    <span class="brand-mark" aria-hidden="true">FE</span>
+    <span>Furnituren<span>Editor</span></span>
+  </a>
+  <div class="header-status"><span class="status-dot"></span>Arbeitsbereich aktiv</div>
+  <div class="header-actions">
+    <button class="btn btn-quiet" title="Hilfe und Legende" onclick="openInfo()">Hilfe</button>
+    <button class="btn btn-secondary" title="JSON laden" onclick="document.getElementById('jsonFile').click()">Importieren</button>
+    <button class="btn btn-primary" title="JSON speichern" onclick="exportJson()">Exportieren</button>
+    <input id="jsonFile" type="file" accept=".json,application/json" onchange="importJson(event)" hidden>
+  </div>
+</header>
+
+<div class="app-shell">
+  <aside class="sidebar" aria-label="Kategorie-Navigation">
+    <div class="sidebar-intro">
+      <p class="section-label">Katalog</p>
+      <h1>Etiketten verwalten</h1>
+      <p>Bereiten Sie Druckbögen für Ihre Beschläge und Artikel vor.</p>
     </div>
-  </div>
-
-  <select id="pageSelect" onchange="changePage(this.value)" title="Kategorie auswählen" aria-label="Kategorie auswählen"></select>
-
-  <button class="icon-btn" title="Neue Kategorie" aria-label="Neue Kategorie" onclick="addPage()">➕</button>
-
-  <div class="menu-wrap">
-    <button class="icon-btn" id="catMenuBtn" title="Kategorie bearbeiten" aria-label="Kategorie bearbeiten" onclick="openCategoryModal()">✏️</button>
-  </div>
-
-  <button class="icon-btn" title="JSON speichern" aria-label="JSON speichern" onclick="exportJson()">💾</button>
-  <button class="icon-btn" title="JSON laden" aria-label="JSON laden" onclick="document.getElementById('jsonFile').click()">📂</button>
-  <input id="jsonFile" type="file" accept=".json,application/json" onchange="importJson(event)" style="display:none">
-
-  <button class="icon-btn" title="Hilfe / Legende" aria-label="Hilfe / Legende" onclick="openInfo()">ℹ️</button>
-
-  <div class="zoom-wrap">
-    <span title="Zoom">🔍</span>
-    <input id="zoomRange" type="range" min="0.8" max="2.2" step="0.1" value="1" oninput="setScale(this.value)">
-    <span id="zoomValue">100%</span>
-  </div>
-</div>
-
-<div class="preview-wrap">
-  <div class="preview-inner">
-    <div class="preview-scale">
-      <div class="page">
-        <div class="measure">35 mm</div>
-        <table id="sheet"></table>
+    <div class="category-control">
+      <label for="pageSelect">Aktive Kategorie</label>
+      <select id="pageSelect" onchange="changePage(this.value)" title="Kategorie auswählen"></select>
+      <div class="category-actions">
+        <button class="btn btn-secondary" onclick="openCategoryModal()">Bearbeiten</button>
+        <button class="btn btn-primary" onclick="addPage()">Neue Kategorie</button>
       </div>
     </div>
-  </div>
+    <div class="sidebar-note">
+      <strong>Tipp</strong>
+      <p>Änderungen bleiben während dieser Sitzung erhalten. Exportieren Sie Ihren Katalog regelmäßig als JSON-Datei.</p>
+    </div>
+  </aside>
+
+  <main class="workspace">
+    <div class="workspace-top">
+      <div>
+        <p class="section-label">Druckbogen</p>
+        <h2 id="workspaceTitle">Kategorie 1</h2>
+      </div>
+      <div class="workspace-actions">
+        <div class="zoom-control">
+          <label for="zoomRange">Ansicht <span id="zoomValue">100%</span></label>
+          <input id="zoomRange" type="range" min="0.8" max="2.2" step="0.1" value="1" oninput="setScale(this.value)">
+        </div>
+        <div class="menu-wrap">
+          <button class="btn btn-primary" id="printMenuBtn" onclick="togglePrintMenu(event)">Drucken</button>
+          <div class="menu" id="printMenu">
+            <button onclick="window.print(); closePrintMenu();">Aktuelle Kategorie drucken</button>
+            <button onclick="printAllPages(); closePrintMenu();">Alle Kategorien drucken</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="workspace-meta">
+      <span><strong id="completedCount">0</strong> von 15 Artikeln gepflegt</span>
+      <span class="meta-divider"></span>
+      <span>35 × 35 mm Etikettenformat</span>
+      <span class="meta-divider"></span>
+      <span>Zum Sortieren Etiketten ziehen</span>
+    </div>
+
+    <div class="preview-wrap">
+      <div class="preview-inner">
+        <div class="preview-scale">
+          <div class="page">
+            <div class="page-heading">
+              <span>Furnituren Editor</span>
+              <strong id="sheetCategory">Kategorie 1</strong>
+              <span>A4 · 15 Etiketten</span>
+            </div>
+            <table id="sheet"></table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
 </div>
 
-<div class="modal" id="modal">
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="editorTitle">
   <div class="modal-box">
-    <h3>Feld bearbeiten</h3>
-    <div class="row"><label>Beschreibung</label><input id="fTitle" type="text"></div>
-    <div class="row"><label>Beco</label><input id="fBeco" type="text"></div>
-    <div class="row"><label>Referenz</label><input id="fRef" type="text"></div>
-    <div class="row"><label>Fester Preis / VK (optional)</label><input id="fPrice" type="text" placeholder="z. B. 12,90"></div>
-    <div class="row"><label>Einkaufspreis / EK (optional)</label><input id="fEk" type="text" placeholder="z. B. 7,50"></div>
-    <div class="row row-check">
-      <label class="check-label">
-        <input id="fQuickService" type="checkbox" onchange="syncQsState()"> Quick Service (kein offizieller QR-Code)
-      </label>
+    <div class="modal-heading"><div><p class="section-label">Artikel</p><h3 id="editorTitle">Etikett bearbeiten</h3></div><button class="close-btn" onclick="closeEditor()" aria-label="Editor schließen">×</button></div>
+    <div class="row"><label for="fTitle">Beschreibung</label><input id="fTitle" type="text"></div>
+    <div class="row"><label for="fBeco">Beco</label><input id="fBeco" type="text"></div>
+    <div class="row"><label for="fRef">Referenz</label><input id="fRef" type="text"></div>
+    <div class="form-grid">
+      <div class="row"><label for="fPrice">Verkaufspreis (VK)</label><input id="fPrice" type="text" placeholder="z. B. 12,90"></div>
+      <div class="row"><label for="fEk">Einkaufspreis (EK)</label><input id="fEk" type="text" placeholder="z. B. 7,50"></div>
     </div>
-    <div class="actions">
-      <button class="btn-danger" onclick="resetItem()">↺ Zurücksetzen</button>
-      <button onclick="closeEditor()">Abbrechen</button>
-      <button onclick="saveEditor()">Übernehmen</button>
-    </div>
+    <div class="row row-check"><label class="check-label"><input id="fQuickService" type="checkbox" onchange="syncQsState()"> Quick Service (kein offizieller QR-Code)</label></div>
+    <div class="actions"><button class="btn btn-danger" onclick="resetItem()">Zurücksetzen</button><span class="actions-spacer"></span><button class="btn btn-secondary" onclick="closeEditor()">Abbrechen</button><button class="btn btn-primary" onclick="saveEditor()">Übernehmen</button></div>
   </div>
 </div>
 
-<!-- INFO POPUP -->
-<div class="info-modal" id="infoModal">
+<div class="info-modal" id="infoModal" role="dialog" aria-modal="true" aria-labelledby="infoTitle">
   <div class="info-box">
-    <h3>Legende / Anleitung – Furnituren Editor</h3>
+    <div class="modal-heading"><div><p class="section-label">Hilfe</p><h3 id="infoTitle">Arbeiten mit dem Editor</h3></div><button class="close-btn" onclick="closeInfo()" aria-label="Hilfe schließen">×</button></div>
     <ul>
-      <li><strong>🖨️ Drucken:</strong> Öffnet ein Menü: „Aktuelle Kategorie drucken" oder „Alle Kategorien drucken".</li>
-      <li><strong>Kategorie auswählen:</strong> Über das Dropdown wählst du die aktuelle Kategorie.</li>
-      <li><strong>➕ Neue Kategorie:</strong> Erstellt eine neue Kategorie mit 15 Feldern.</li>
-      <li><strong>✏️ Kategorie bearbeiten:</strong> Menü mit „Umbenennen" und „Löschen" der aktuellen Kategorie.</li>
-      <li><strong>💾 JSON speichern:</strong> Exportiert alle Daten (inkl. Reihenfolge und Fotos) als JSON-Datei.</li>
-      <li><strong>📂 JSON laden:</strong> Importiert eine gespeicherte JSON-Datei.</li>
-      <li><strong>🔍 Zoom:</strong> Vergrößert/verkleinert die Vorschau.</li>
-      <li><strong>✎ in jeder Zelle:</strong> Öffnet den Editor für Beschreibung, Beco, Referenz und festen Preis.</li>
-      <li><strong>Foto:</strong> In der Zelle auf den Foto-Bereich klicken, um ein Bild hochzuladen.</li>
-      <li><strong>Felder tauschen:</strong> Zellen per Drag & Drop ziehen und auf andere Zelle fallen lassen.</li>
-      <li><strong>QR:</strong> Wird automatisch aus dem Referenz-Feld erzeugt.</li>
-      <li><strong>Wichtig:</strong> Änderungen sind im Browser aktiv; für Sicherung immer <strong>JSON speichern</strong>.</li>
+      <li><strong>Kategorie:</strong> Wählen, erstellen oder bearbeiten Sie Druckbogen-Kategorien in der Navigation.</li>
+      <li><strong>Artikel:</strong> Klicken Sie auf das Stiftsymbol eines Etiketts, um Beschreibung, Preise und Referenz zu pflegen.</li>
+      <li><strong>Fotos:</strong> Klicken Sie auf den Fotobereich eines Etiketts, um ein Bild aus der Bibliothek zuzuordnen.</li>
+      <li><strong>Sortierung:</strong> Ziehen Sie Etiketten per Drag &amp; Drop auf eine andere Position.</li>
+      <li><strong>QR-Code:</strong> Erzeugt sich automatisch aus der Referenz; Quick Service verwendet die Beschreibung.</li>
+      <li><strong>Sicherung:</strong> Exportieren Sie den Katalog als JSON-Datei, um Daten dauerhaft zu speichern.</li>
     </ul>
-    <div class="info-actions">
-      <button onclick="closeInfo()">Schließen</button>
-    </div>
+    <div class="info-actions"><button class="btn btn-primary" onclick="closeInfo()">Verstanden</button></div>
   </div>
 </div>
 
-<!-- FOTO PICKER -->
-<div class="photo-picker-modal" id="photoPickerModal">
+<div class="photo-picker-modal" id="photoPickerModal" role="dialog" aria-modal="true" aria-labelledby="photoTitle">
   <div class="photo-picker-box">
-    <h3>Foto auswählen</h3>
+    <div class="modal-heading"><div><p class="section-label">Mediathek</p><h3 id="photoTitle">Foto auswählen</h3></div><button class="close-btn" onclick="closePhotoPicker()" aria-label="Auswahl schließen">×</button></div>
     <div id="photoLibGrid" class="lib-grid"></div>
-    <div class="picker-actions">
-      <button id="removePhotoBtn" class="btn-danger" onclick="removePhotoFromPicker()" style="margin-right:auto;display:none">🗑️ Foto entfernen</button>
-      <button onclick="triggerNewPhotoUpload()">📁 Neues Foto hochladen</button>
-      <button onclick="closePhotoPicker()">Abbrechen</button>
-    </div>
-    <input id="libPhotoUpload" type="file" accept="image/*" onchange="handleLibPhotoUpload(event)" style="display:none">
+    <div class="picker-actions"><button id="removePhotoBtn" class="btn btn-danger" onclick="removePhotoFromPicker()" hidden>Foto entfernen</button><span class="actions-spacer"></span><button class="btn btn-secondary" onclick="triggerNewPhotoUpload()">Foto hochladen</button><button class="btn btn-primary" onclick="closePhotoPicker()">Fertig</button></div>
+    <input id="libPhotoUpload" type="file" accept="image/*" onchange="handleLibPhotoUpload(event)" hidden>
   </div>
 </div>
 
-<!-- KATEGORIE BEARBEITEN -->
-<div class="modal" id="categoryModal">
-  <div class="modal-box">
-    <h3>Kategorie bearbeiten</h3>
-    <div class="row"><label>Name</label><input id="catEditName" type="text"></div>
-    <div class="actions">
-      <button class="btn-danger" onclick="deleteCategoryFromModal()">🗑️ Löschen</button>
-      <button onclick="closeCategoryModal()">Abbrechen</button>
-      <button onclick="saveCategoryModal()">Speichern</button>
-    </div>
+<div class="modal" id="categoryModal" role="dialog" aria-modal="true" aria-labelledby="categoryTitle">
+  <div class="modal-box modal-box--compact">
+    <div class="modal-heading"><div><p class="section-label">Katalog</p><h3 id="categoryTitle">Kategorie bearbeiten</h3></div><button class="close-btn" onclick="closeCategoryModal()" aria-label="Kategorieeditor schließen">×</button></div>
+    <div class="row"><label for="catEditName">Name</label><input id="catEditName" type="text"></div>
+    <div class="actions"><button class="btn btn-danger" onclick="deleteCategoryFromModal()">Löschen</button><span class="actions-spacer"></span><button class="btn btn-secondary" onclick="closeCategoryModal()">Abbrechen</button><button class="btn btn-primary" onclick="saveCategoryModal()">Speichern</button></div>
   </div>
 </div>
 
-<!-- CUSTOM DIALOG -->
-<div class="custom-dialog" id="customDialog">
+<div class="custom-dialog" id="customDialog" role="dialog" aria-modal="true">
   <div class="custom-dialog-box">
     <p id="cdMsg"></p>
     <input id="cdInput" type="text" class="cd-input">
-    <div class="cd-actions">
-      <button id="cdCancel" class="cd-btn">Abbrechen</button>
-      <button id="cdOk" class="cd-btn">OK</button>
-    </div>
+    <div class="cd-actions"><button id="cdCancel" class="btn btn-secondary">Abbrechen</button><button id="cdOk" class="btn btn-primary">OK</button></div>
   </div>
 </div>
 
