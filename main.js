@@ -373,11 +373,11 @@ function onEmployeeDragOver(event){event.preventDefault();event.currentTarget.cl
 function onEmployeeDrop(event){event.preventDefault();const target=Number(event.currentTarget.dataset.employeeIndex);if(Number.isInteger(employeeDragSource)&&employeeDragSource!==target){const list=activeEmployees();[list[employeeDragSource],list[target]]=[list[target],list[employeeDragSource]];renderEmployees();}employeeDragSource=null;}
 function onEmployeeDragEnd(){document.querySelectorAll('.employee-card.drag-over').forEach(card=>card.classList.remove('drag-over'));employeeDragSource=null;}
 
-function systemTheme(){return window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+function systemTheme(){return window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
 function savedTheme(){try{return localStorage.getItem('furnituren-editor-theme');}catch(error){return null;}}
 function applyTheme(theme){document.documentElement.dataset.theme=theme;const button=document.getElementById('themeToggle');const dark=theme==='dark';button.textContent=dark?'Hellmodus':'Dunkelmodus';button.setAttribute('aria-pressed',String(dark));button.setAttribute('title',dark?'Zum Hellmodus wechseln':'Zum Dunkelmodus wechseln');}
 function toggleTheme(){const next=document.documentElement.dataset.theme==='dark'?'light':'dark';try{localStorage.setItem('furnituren-editor-theme',next);}catch(error){}applyTheme(next);}
-function initializeTheme(){const saved=savedTheme();applyTheme(saved==='dark'||saved==='light'?saved:systemTheme());window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',event=>{if(!savedTheme())applyTheme(event.matches?'dark':'light');});}
+function initializeTheme(){const saved=savedTheme();applyTheme(saved==='dark'||saved==='light'?saved:systemTheme());const media=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)');if(media){const update=event=>{if(!savedTheme())applyTheme(event.matches?'dark':'light');};if(media.addEventListener)media.addEventListener('change',update);else if(media.addListener)media.addListener(update);}document.getElementById('themeToggle').addEventListener('click',toggleTheme);}
 
 function updateWorkspaceContext(){
   const employeeMode=editorMode==='employee';

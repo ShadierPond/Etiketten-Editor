@@ -32,7 +32,10 @@
 :root[data-theme="dark"] .workspace-top{background:#142432}
 :root[data-theme="dark"] .workspace-meta{background:#101f2d}
 :root[data-theme="dark"] .preview-wrap{background:radial-gradient(circle at 20% 0,#1a2f40 0,#101d29 55%,#0d1822 100%)}
-:root[data-theme="dark"] .page{box-shadow:0 14px 35px rgba(0,0,0,.42)}
+:root[data-theme="dark"] .page{color:#000;background:#fff;box-shadow:0 14px 35px rgba(0,0,0,.42)}
+:root[data-theme="dark"] .page-heading{color:#627d98}
+:root[data-theme="dark"] .page-heading strong{color:#102a43}
+:root[data-theme="dark"] .page .title,:root[data-theme="dark"] .page .beco,:root[data-theme="dark"] .page .qr-ref,:root[data-theme="dark"] .page .price{color:#000}
 :root[data-theme="dark"] .modal,:root[data-theme="dark"] .info-modal,:root[data-theme="dark"] .photo-picker-modal,:root[data-theme="dark"] .custom-dialog{background:rgba(0,0,0,.66)}
 :root[data-theme="dark"] .modal-box,:root[data-theme="dark"] .info-box,:root[data-theme="dark"] .photo-picker-box,:root[data-theme="dark"] .custom-dialog-box{background:#142432;border-color:#365168}
 :root[data-theme="dark"] .close-btn{color:#b2c4d4}
