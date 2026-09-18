@@ -39,6 +39,15 @@ FORM: Operate-first split workspace with print preview as the permanent source o
       <button class="editor-tab active" id="furnitureTab" onclick="setEditorMode('furniture')" role="tab" aria-selected="true">Furnituren</button>
       <button class="editor-tab" id="employeeTab" onclick="setEditorMode('employee')" role="tab" aria-selected="false">Mitarbeiter</button>
     </div>
+    <div class="search-control">
+      <label for="globalSearch" id="searchLabel">Furnituren suchen</label>
+      <div class="search-field">
+        <input id="globalSearch" type="search" placeholder="Kategorie, Beco, Beschreibung, Referenz" autocomplete="off" oninput="runSearch()" aria-describedby="searchHint">
+        <button class="search-clear" id="searchClear" type="button" onclick="clearSearch()" aria-label="Suche löschen" hidden>×</button>
+      </div>
+      <small id="searchHint" class="field-hint">Treffer antippen, um direkt zur passenden Seite zu springen.</small>
+      <div id="searchResults" class="search-results" aria-live="polite"></div>
+    </div>
     <div class="category-control">
       <label for="pageSelect" id="pageSelectLabel">Aktive Kategorie</label>
       <select id="pageSelect" onchange="changePage(this.value)" title="Kategorie auswählen"></select>

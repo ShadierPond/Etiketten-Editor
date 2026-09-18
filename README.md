@@ -41,6 +41,13 @@ Der Editor ist direkt über GitHub Pages verfügbar:
 - Auf schmalen Bildschirmen vertikal scrollbare Bedienoberfläche und horizontal
   verschiebbare A4-Vorschau
 
+### Suche
+
+- Furnituren nach Kategorie, Beschreibung, Beco oder Referenz durchsuchen
+- Mitarbeitende nach Filiale, Name oder Mitarbeitendennummer durchsuchen
+- Treffer öffnen die zugehörige Vorschau und werden dort kurz hervorgehoben;
+  Druckbögen bleiben unverändert
+
 ### Darstellung
 
 - Folgt beim ersten Öffnen automatisch der hellen oder dunklen
