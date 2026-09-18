@@ -7,7 +7,7 @@ Datenbank: `index.html` kann direkt im Browser geöffnet werden.
 ## Online verwenden
 
 Der Editor ist direkt über GitHub Pages verfügbar:
-<https://shadierpond.github.io/Funituren-Editor/>
+<https://shadierpond.github.io/Funituren-Mitarbeiter-Editor/>
 
 ## Funktionen
 
