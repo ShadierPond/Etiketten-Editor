@@ -4,6 +4,11 @@ Ein browserbasierter, statischer Editor für druckfertige Furnituren-Etiketten
 und QR-Code-Karten für Mitarbeitende. Er benötigt keinen Server und keine
 Datenbank: `index.html` kann direkt im Browser geöffnet werden.
 
+## Online verwenden
+
+Der Editor ist direkt über GitHub Pages verfügbar:
+<https://shadierpond.github.io/Funituren-Editor/>
+
 ## Funktionen
 
 ### Furnituren-Etiketten
