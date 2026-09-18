@@ -28,6 +28,14 @@ Datenbank: `index.html` kann direkt im Browser geöffnet werden.
 - Aktuelle Filiale oder alle Filialen auf separaten DIN-A4-Blättern im
   Hochformat drucken
 
+### Darstellung
+
+- Folgt beim ersten Öffnen automatisch der hellen oder dunklen
+  Betriebssystemdarstellung
+- Umschaltfläche oben rechts für eine persönliche, lokal gespeicherte
+  Hell-/Dunkel-Einstellung
+- Druckansicht bleibt unabhängig vom gewählten Thema weiß und kontrastreich
+
 ## Verwendung
 
 1. `index.html` im Browser öffnen.

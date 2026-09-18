@@ -22,6 +22,7 @@ FORM: Operate-first split workspace with print preview as the permanent source o
   <div class="header-status"><span class="status-dot"></span>Arbeitsbereich aktiv</div>
   <div class="header-actions">
     <button class="btn btn-quiet" title="Hilfe und Legende" onclick="openInfo()">Hilfe</button>
+    <button class="btn btn-quiet theme-toggle" id="themeToggle" type="button" aria-pressed="false" onclick="toggleTheme()">Dunkelmodus</button>
     <button class="btn btn-secondary" title="JSON laden" onclick="document.getElementById('jsonFile').click()">Importieren</button>
     <button class="btn btn-primary" title="JSON speichern" onclick="exportJson()">Exportieren</button>
     <input id="jsonFile" type="file" accept=".json,application/json" onchange="importJson(event)" hidden>
