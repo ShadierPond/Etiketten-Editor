@@ -569,6 +569,7 @@ setScale(document.getElementById('zoomRange').value);
 render();
 initPinchZoom();
 initTouchDrag();
+initEmployeeTouchDrag();
 
 // ── Touch: Pinch-to-Zoom on preview ──────────────────────────────────────────
 function initPinchZoom(){
@@ -674,4 +675,69 @@ function initTouchDrag(){
   },{passive:true});
 
   sheet.addEventListener('touchcancel',cleanup,{passive:true});
+}
+
+function initEmployeeTouchDrag(){
+  const target=document.getElementById('employeeSheet');
+  let source=null,clone=null,active=false,startPos=null,timer=null;
+
+  function cleanup(){
+    clearTimeout(timer);timer=null;
+    if(clone){clone.remove();clone=null;}
+    target.querySelectorAll('.employee-card.drag-over,.employee-card.drag-source').forEach(card=>
+      card.classList.remove('drag-over','drag-source'));
+    source=null;active=false;startPos=null;
+  }
+
+  target.addEventListener('touchstart',event=>{
+    const card=event.target.closest('.employee-card[data-employee-index]');
+    if(!card) return;
+    source=parseInt(card.dataset.employeeIndex,10);
+    startPos={x:event.touches[0].clientX,y:event.touches[0].clientY};
+    timer=setTimeout(()=>{
+      active=true;
+      const rect=card.getBoundingClientRect();
+      clone=card.cloneNode(true);
+      Object.assign(clone.style,{position:'fixed',width:rect.width+'px',height:rect.height+'px',
+        left:rect.left+'px',top:rect.top+'px',opacity:'.82',pointerEvents:'none',zIndex:'9999',
+        transform:'scale(1.04)',boxShadow:'0 6px 24px rgba(0,0,0,.3)'});
+      document.body.appendChild(clone);
+      card.classList.add('drag-source');
+    },450);
+  },{passive:true});
+
+  target.addEventListener('touchmove',event=>{
+    if(source===null) return;
+    if(!active){
+      if(Math.hypot(event.touches[0].clientX-startPos.x,event.touches[0].clientY-startPos.y)>8) cleanup();
+      return;
+    }
+    event.preventDefault();
+    const touch=event.touches[0];
+    clone.style.left=(touch.clientX-clone.offsetWidth/2)+'px';
+    clone.style.top=(touch.clientY-clone.offsetHeight/2)+'px';
+    clone.style.visibility='hidden';
+    const card=document.elementFromPoint(touch.clientX,touch.clientY)?.closest('.employee-card[data-employee-index]');
+    clone.style.visibility='';
+    target.querySelectorAll('.employee-card.drag-over').forEach(item=>item.classList.remove('drag-over'));
+    if(card&&parseInt(card.dataset.employeeIndex,10)!==source) card.classList.add('drag-over');
+  },{passive:false});
+
+  target.addEventListener('touchend',event=>{
+    if(!active){cleanup();return;}
+    event.preventDefault();
+    const touch=event.changedTouches[0];
+    const card=document.elementFromPoint(touch.clientX,touch.clientY)?.closest('.employee-card[data-employee-index]');
+    const destination=card?parseInt(card.dataset.employeeIndex,10):NaN;
+    if(Number.isFinite(destination)&&destination!==source){
+      const list=activeEmployees();
+      [list[source],list[destination]]=[list[destination],list[source]];
+      cleanup();
+      renderEmployees();
+      return;
+    }
+    cleanup();
+  },{passive:false});
+
+  target.addEventListener('touchcancel',cleanup,{passive:true});
 }

@@ -33,6 +33,14 @@ Der Editor ist direkt über GitHub Pages verfügbar:
 - Aktuelle Filiale oder alle Filialen auf separaten DIN-A4-Blättern im
   Hochformat drucken
 
+### Touch-Geräte
+
+- Für Handys und Tablets optimierte Bedienelemente mit größeren Touch-Flächen
+- Pinch-to-Zoom für die Druckvorschau
+- Furnituren und Mitarbeitendencodes per Langdruck ziehen und sortieren
+- Auf schmalen Bildschirmen vertikal scrollbare Bedienoberfläche und horizontal
+  verschiebbare A4-Vorschau
+
 ### Darstellung
 
 - Folgt beim ersten Öffnen automatisch der hellen oder dunklen
