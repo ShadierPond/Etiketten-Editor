@@ -310,31 +310,29 @@ function buildAllPagesPrintHtml(){
     </div>
   `).join('');
 }
-function printAllPages(){
-  if(editorMode==='employee'){
-    const target=document.getElementById('employeeSheet');
-    const original=target.innerHTML;
-    const layout=employeeLayout();
-    const rows=Math.max(1,Math.floor(260/(layout.height+3)));
-    const printClass=`employee-sheet qr-${layout.qrPosition}${layout.nameBold?' employee-name-bold':''}`;
-    const printStyle=`--employee-card-width:${layout.width}mm;--employee-card-height:${layout.height}mm;--employee-card-rows:${rows};--employee-name-size:${layout.nameSize}pt;--employee-number-size:${layout.numberSize}pt`;
-    target.innerHTML=employeePages().map(page=>`<section class="print-employee-page"><div class="page-heading"><span>Furnituren Editor</span><strong>Mitarbeitendencodes · ${esc(page.name)}</strong><span>A4 · ${page.employees.length} Mitarbeiter</span></div><div class="${printClass}" style="${printStyle}">${employeeCardsHtml(page.employees)}</div></section>`).join('');
-    window.print();
-    setTimeout(()=>{target.innerHTML=original;renderEmployees();},100);
-    return;
-  }
-  const wrap=document.querySelector('.preview-scale');
-  if(!wrap) return;
-
-  const original=wrap.innerHTML;
-  wrap.innerHTML=buildAllPagesPrintHtml();
-
+function buildAllEmployeePagesPrintHtml(){
+  const layout=employeeLayout();
+  const rows=Math.max(1,Math.floor(260/(layout.height+3)));
+  const printClass=`employee-sheet qr-${layout.qrPosition}${layout.nameBold?' employee-name-bold':''}`;
+  const printStyle=`--employee-card-width:${layout.width}mm;--employee-card-height:${layout.height}mm;--employee-card-rows:${rows};--employee-name-size:${layout.nameSize}pt;--employee-number-size:${layout.numberSize}pt`;
+  return employeePages().map(page=>`<section class="print-employee-page"><div class="page-heading"><span>Furnituren Editor</span><strong>Mitarbeitendencodes · ${esc(page.name)}</strong><span>A4 · ${page.employees.length} Mitarbeiter</span></div><div class="${printClass}" style="${printStyle}">${employeeCardsHtml(page.employees)}</div></section>`).join('');
+}
+function printCurrentPage(){
+  setPrintOrientation(editorMode==='employee');
   window.print();
-
-  setTimeout(()=>{
-    wrap.innerHTML=original;
-    render();
-  },100);
+}
+function printAllPages(){
+  const employeeMode=editorMode==='employee';
+  const stage=document.getElementById('printStage');
+  stage.innerHTML=employeeMode?buildAllEmployeePagesPrintHtml():buildAllPagesPrintHtml();
+  document.body.classList.add('printing');
+  document.body.classList.toggle('printing-employees',employeeMode);
+  setPrintOrientation(employeeMode);
+  window.addEventListener('afterprint',()=>{
+    stage.innerHTML='';
+    document.body.classList.remove('printing','printing-employees');
+  },{once:true});
+  window.print();
 }
 
 function render(){
@@ -358,7 +356,7 @@ function render(){
 }
 
 function setEditorMode(mode){editorMode=mode;const employeeMode=mode==='employee';const availablePages=employeeMode?employeePages():data.pages;if(currentPage>=availablePages.length)currentPage=0;const employeeSheet=document.getElementById('employeeSheet');document.getElementById('furnitureTab').classList.toggle('active',!employeeMode);document.getElementById('employeeTab').classList.toggle('active',employeeMode);document.getElementById('furnitureTab').setAttribute('aria-selected',String(!employeeMode));document.getElementById('employeeTab').setAttribute('aria-selected',String(employeeMode));document.getElementById('employeeControls').hidden=!employeeMode;sheet.hidden=employeeMode;sheet.style.display=employeeMode?'none':'table';employeeSheet.hidden=!employeeMode;employeeSheet.style.display=employeeMode?'grid':'none';const layout=employeeLayout();document.getElementById('employeeCardWidth').value=layout.width;document.getElementById('employeeCardHeight').value=layout.height;document.getElementById('employeeQrPosition').value=layout.qrPosition;document.getElementById('employeeNameSize').value=layout.nameSize;document.getElementById('employeeNumberSize').value=layout.numberSize;document.getElementById('employeeNameBold').checked=layout.nameBold;document.getElementById('pageSelectLabel').textContent=employeeMode?'Aktive Filiale':'Aktive Kategorie';document.getElementById('addPageButton').textContent=employeeMode?'Neue Filiale':'Neue Kategorie';document.getElementById('printCurrentButton').textContent=employeeMode?'Aktuelle Filiale drucken':'Aktuelle Kategorie drucken';document.getElementById('printAllButton').textContent=employeeMode?'Alle Filialen drucken':'Alle Kategorien drucken';document.body.classList.toggle('employee-mode',employeeMode);setPrintOrientation(employeeMode);refreshPages();document.getElementById('workspaceMeta').innerHTML=employeeMode?`<span><strong>${activeEmployees().length}</strong> Mitarbeitendencodes in dieser Filiale</span><span class="meta-divider"></span><span>QR-Code für die Kassenanmeldung</span>`:`<span><strong id="completedCount">0</strong> von 15 Artikeln gepflegt</span><span class="meta-divider"></span><span>35 × 35 mm Etikettenformat</span>`;render();}
-function setPrintOrientation(employeeMode){document.getElementById('employeePrintStyle')?.remove();if(employeeMode){const style=document.createElement('style');style.id='employeePrintStyle';style.textContent='@media print{@page{size:A4 portrait;margin:0}}';document.head.appendChild(style);}}
+function setPrintOrientation(employeeMode){let style=document.getElementById('printOrientationStyle');if(!style){style=document.createElement('style');style.id='printOrientationStyle';style.media='print';document.head.appendChild(style);}style.textContent=`@page{size:${employeeMode?'210mm 297mm':'297mm 210mm'};margin:0}`;}
 function saveEmployeeLayout(){data.employeeLayout={width:Math.max(35,Number(document.getElementById('employeeCardWidth').value)||70),height:Math.max(12,Number(document.getElementById('employeeCardHeight').value)||17.5),qrPosition:document.getElementById('employeeQrPosition').value,nameSize:Math.max(5,Number(document.getElementById('employeeNameSize').value)||8),numberSize:Math.max(4,Number(document.getElementById('employeeNumberSize').value)||5.5),nameBold:document.getElementById('employeeNameBold').checked};renderEmployees();}
 function renderEmployees(){const target=document.getElementById('employeeSheet');const layout=employeeLayout();const rows=Math.max(1,Math.floor(260/(layout.height+3)));target.style.setProperty('--employee-card-width',layout.width+'mm');target.style.setProperty('--employee-card-height',layout.height+'mm');target.style.setProperty('--employee-card-rows',rows);target.style.setProperty('--employee-name-size',layout.nameSize+'pt');target.style.setProperty('--employee-number-size',layout.numberSize+'pt');target.className='employee-sheet qr-'+layout.qrPosition+(layout.nameBold?' employee-name-bold':'');const list=activeEmployees();target.innerHTML=list.length?employeeCardsHtml(list):'<div class="employee-empty"><strong>Noch keine Mitarbeitendencodes</strong><span>Fügen Sie links den ersten Mitarbeiter hinzu.</span></div>';}
 function employeeCardsHtml(list){return list.map((employee,index)=>`<button class="employee-card" draggable="true" data-employee-index="${index}" ondragstart="onEmployeeDragStart(event)" ondragover="onEmployeeDragOver(event)" ondrop="onEmployeeDrop(event)" ondragend="onEmployeeDragEnd()" onclick="openEmployeeEditor(${index})"><span class="employee-card-copy"><strong>${esc(employee.name||'Ohne Name')}</strong><small>${esc(employee.number||'Keine Mitarbeitendennummer')}</small></span><img class="employee-card-qr" src="${qr(employee.code||employee.number||'SHADIERPOS-UNCONFIGURED')}" alt="QR-Code"></button>`).join('');}

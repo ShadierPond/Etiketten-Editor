@@ -81,7 +81,7 @@ FORM: Operate-first split workspace with print preview as the permanent source o
         <div class="menu-wrap">
           <button class="btn btn-primary" id="printMenuBtn" onclick="togglePrintMenu(event)">Drucken</button>
           <div class="menu" id="printMenu">
-            <button id="printCurrentButton" onclick="window.print(); closePrintMenu();">Aktuelle Kategorie drucken</button>
+            <button id="printCurrentButton" onclick="printCurrentPage(); closePrintMenu();">Aktuelle Kategorie drucken</button>
             <button id="printAllButton" onclick="printAllPages(); closePrintMenu();">Alle Kategorien drucken</button>
           </div>
         </div>
@@ -180,6 +180,8 @@ FORM: Operate-first split workspace with print preview as the permanent source o
     <div class="cd-actions"><button id="cdCancel" class="btn btn-secondary">Abbrechen</button><button id="cdOk" class="btn btn-primary">OK</button></div>
   </div>
 </div>
+
+<div id="printStage" class="print-stage" aria-hidden="true"></div>
 
 <script src="main.js"></script>
 </body>
