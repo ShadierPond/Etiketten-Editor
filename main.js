@@ -1,10 +1,13 @@
 function emptyItem(){ return {title:'',beco:'',ref:'',photo:'',price:'',ek:'',quickService:false}; }
 function emptyPage(name='Neue Kategorie'){ return {name,items:Array.from({length:15},()=>emptyItem())}; }
 
-let data={pages:[emptyPage('Kategorie 1')],library:{}};
+function emptyEmployeePage(name='Neue Filiale'){ return {name,employees:[]}; }
+let data={pages:[emptyPage('Kategorie 1')],library:{},employeePages:[emptyEmployeePage('Filiale 1')],employeeLayout:{width:70,height:17.5,qrPosition:'right',nameSize:8,numberSize:5.5,nameBold:true}};
 let currentPage=0;
 let currentItem=null;
 let dragSourceIndex=null;
+let editorMode='furniture';
+let currentEmployee=null;
 
 const sheet=document.getElementById('sheet');
 const modal=document.getElementById('modal');
@@ -29,6 +32,9 @@ function qr(ref){
   return 'https://api.qrserver.com/v1/create-qr-code/?size=140x140&data='+encodeURIComponent(ref);
 }
 function items(){ return data.pages[currentPage].items; }
+function employeeLayout(){ return {...{width:70,height:17.5,qrPosition:'right',nameSize:8,numberSize:5.5,nameBold:true},...(data.employeeLayout||{})}; }
+function employeePages(){ return data.employeePages||[]; }
+function activeEmployees(){ return employeePages()[currentPage]?.employees||[]; }
 
 function resolvePhoto(key){
   if(!key) return '';
@@ -48,7 +54,8 @@ function setScale(v){
   document.getElementById('zoomValue').textContent=Math.round(parseFloat(v)*100)+'%';
 }
 function refreshPages(){
-  pageSelect.innerHTML=data.pages.map((p,i)=>
+  const list=editorMode==='employee'?employeePages():data.pages;
+  pageSelect.innerHTML=list.map((p,i)=>
     `<option value="${i}" ${i===currentPage?'selected':''}>${esc(p.name)}</option>`
   ).join('');
   updateWorkspaceContext();
@@ -60,10 +67,11 @@ function changePage(v){
 }
 
 async function addPage(){
-  const name=await showPrompt('Name der neuen Kategorie?','Neue Kategorie');
+  const isEmployee=editorMode==='employee';
+  const name=await showPrompt(isEmployee?'Name der neuen Filiale?':'Name der neuen Kategorie?',isEmployee?'Neue Filiale':'Neue Kategorie');
   if(name===false) return;
-  data.pages.push(emptyPage(name.trim()||'Neue Kategorie'));
-  currentPage=data.pages.length-1;
+  if(isEmployee){ data.employeePages.push(emptyEmployeePage(name.trim()||'Neue Filiale')); currentPage=data.employeePages.length-1; }
+  else { data.pages.push(emptyPage(name.trim()||'Neue Kategorie')); currentPage=data.pages.length-1; }
   refreshPages();
   render();
 }
@@ -71,25 +79,26 @@ async function addPage(){
 const categoryModal=document.getElementById('categoryModal');
 function openCategoryModal(){
   closeAllMenus();
-  document.getElementById('catEditName').value=data.pages[currentPage].name;
+  document.getElementById('catEditName').value=(editorMode==='employee'?employeePages():data.pages)[currentPage].name;
   openModal(categoryModal);
 }
 function closeCategoryModal(){ categoryModal.style.display='none'; }
 async function saveCategoryModal(){
   const name=document.getElementById('catEditName').value.trim();
-  if(name) data.pages[currentPage].name=name;
+  if(name) (editorMode==='employee'?employeePages():data.pages)[currentPage].name=name;
   closeCategoryModal();
   refreshPages();
 }
 async function deleteCategoryFromModal(){
-  if(data.pages.length===1){
-    await showAlert('Mindestens eine Kategorie muss bleiben.');
+  const list=editorMode==='employee'?employeePages():data.pages;
+  if(list.length===1){
+    await showAlert(editorMode==='employee'?'Mindestens eine Filiale muss bleiben.':'Mindestens eine Kategorie muss bleiben.');
     return;
   }
-  const ok=await showDangerConfirm(`Kategorie „${data.pages[currentPage].name}“ löschen?`);
+  const ok=await showDangerConfirm(`${editorMode==='employee'?'Filiale':'Kategorie'} „${list[currentPage].name}“ löschen?`);
   if(!ok) return;
-  data.pages.splice(currentPage,1);
-  if(currentPage>=data.pages.length) currentPage=data.pages.length-1;
+  list.splice(currentPage,1);
+  if(currentPage>=list.length) currentPage=list.length-1;
   closeCategoryModal();
   refreshPages();
   render();
@@ -161,8 +170,15 @@ function importJson(event){
       });
 
       parsed.library=importedLibrary;
+      if(!Array.isArray(parsed.employeePages)){
+        parsed.employeePages=[emptyEmployeePage('Filiale 1')];
+        if(Array.isArray(parsed.employees)) parsed.employeePages[0].employees=parsed.employees;
+      }
+      parsed.employeePages.forEach(page=>{if(!Array.isArray(page.employees))page.employees=[];page.name=page.name||'Filiale';});
+      if(!parsed.employeeLayout) parsed.employeeLayout={width:70,height:17.5,qrPosition:'right'};
       data=parsed;
-      currentPage=0;
+      const availablePages=editorMode==='employee'?employeePages():data.pages;
+      if(currentPage>=availablePages.length) currentPage=0;
       refreshPages();
       render();
     }catch{
@@ -285,13 +301,25 @@ function renderTableForPage(pageIndex){
 function buildAllPagesPrintHtml(){
   return data.pages.map((p,idx)=>`
     <div class="page print-page">
-      <div class="category-title">${esc(p.name)}</div>
-      <div class="measure">35 mm</div>
+      <div class="page-heading">
+        <span>Furnituren Editor</span>
+        <strong>${esc(p.name)}</strong>
+        <span>A4 · 15 Etiketten</span>
+      </div>
       ${renderTableForPage(idx)}
     </div>
   `).join('');
 }
 function printAllPages(){
+  if(editorMode==='employee'){
+    const target=document.getElementById('employeeSheet');
+    const original=target.innerHTML;
+    const layout=employeeLayout();
+    target.innerHTML=employeePages().map(page=>`<section class="print-employee-page"><div class="page-heading"><span>Furnituren Editor</span><strong>Mitarbeitendencodes · ${esc(page.name)}</strong><span>A4 · ${page.employees.length} Mitarbeiter</span></div><div class="employee-sheet qr-${layout.qrPosition}" style="--employee-card-width:${layout.width}mm;--employee-card-height:${layout.height}mm">${employeeCardsHtml(page.employees)}</div></section>`).join('');
+    window.print();
+    setTimeout(()=>{target.innerHTML=original;renderEmployees();},100);
+    return;
+  }
   const wrap=document.querySelector('.preview-scale');
   if(!wrap) return;
 
@@ -307,6 +335,11 @@ function printAllPages(){
 }
 
 function render(){
+  if(editorMode==='employee'){
+    updateWorkspaceContext();
+    renderEmployees();
+    return;
+  }
   let html='';
   const list=items();
   for(let r=0;r<3;r++){
@@ -321,16 +354,37 @@ function render(){
   updateWorkspaceContext();
 }
 
+function setEditorMode(mode){editorMode=mode;const employeeMode=mode==='employee';const availablePages=employeeMode?employeePages():data.pages;if(currentPage>=availablePages.length)currentPage=0;const employeeSheet=document.getElementById('employeeSheet');document.getElementById('furnitureTab').classList.toggle('active',!employeeMode);document.getElementById('employeeTab').classList.toggle('active',employeeMode);document.getElementById('employeeControls').hidden=!employeeMode;sheet.hidden=employeeMode;sheet.style.display=employeeMode?'none':'table';employeeSheet.hidden=!employeeMode;employeeSheet.style.display=employeeMode?'grid':'none';const layout=employeeLayout();document.getElementById('employeeCardWidth').value=layout.width;document.getElementById('employeeCardHeight').value=layout.height;document.getElementById('employeeQrPosition').value=layout.qrPosition;document.getElementById('employeeNameSize').value=layout.nameSize;document.getElementById('employeeNumberSize').value=layout.numberSize;document.getElementById('employeeNameBold').checked=layout.nameBold;document.getElementById('pageSelectLabel').textContent=employeeMode?'Aktive Filiale':'Aktive Kategorie';document.getElementById('addPageButton').textContent=employeeMode?'Neue Filiale':'Neue Kategorie';document.getElementById('printCurrentButton').textContent=employeeMode?'Aktuelle Filiale drucken':'Aktuelle Kategorie drucken';document.getElementById('printAllButton').textContent=employeeMode?'Alle Filialen drucken':'Alle Kategorien drucken';document.body.classList.toggle('employee-mode',employeeMode);setPrintOrientation(employeeMode);refreshPages();document.getElementById('workspaceMeta').innerHTML=employeeMode?`<span><strong>${activeEmployees().length}</strong> Mitarbeitendencodes in dieser Filiale</span><span class="meta-divider"></span><span>QR-Code für die Kassenanmeldung</span>`:`<span><strong id="completedCount">0</strong> von 15 Artikeln gepflegt</span><span class="meta-divider"></span><span>35 × 35 mm Etikettenformat</span>`;render();}
+function setPrintOrientation(employeeMode){document.getElementById('employeePrintStyle')?.remove();if(employeeMode){const style=document.createElement('style');style.id='employeePrintStyle';style.textContent='@media print{@page{size:A4 portrait;margin:0}}';document.head.appendChild(style);}}
+function saveEmployeeLayout(){data.employeeLayout={width:Math.max(35,Number(document.getElementById('employeeCardWidth').value)||70),height:Math.max(12,Number(document.getElementById('employeeCardHeight').value)||17.5),qrPosition:document.getElementById('employeeQrPosition').value,nameSize:Math.max(5,Number(document.getElementById('employeeNameSize').value)||8),numberSize:Math.max(4,Number(document.getElementById('employeeNumberSize').value)||5.5),nameBold:document.getElementById('employeeNameBold').checked};renderEmployees();}
+function renderEmployees(){const target=document.getElementById('employeeSheet');const layout=employeeLayout();const rows=Math.max(1,Math.floor(260/(layout.height+3)));target.style.setProperty('--employee-card-width',layout.width+'mm');target.style.setProperty('--employee-card-height',layout.height+'mm');target.style.setProperty('--employee-card-rows',rows);target.style.setProperty('--employee-name-size',layout.nameSize+'pt');target.style.setProperty('--employee-number-size',layout.numberSize+'pt');target.className='employee-sheet qr-'+layout.qrPosition+(layout.nameBold?' employee-name-bold':'');const list=activeEmployees();target.innerHTML=list.length?employeeCardsHtml(list):'<div class="employee-empty"><strong>Noch keine Mitarbeitendencodes</strong><span>Fügen Sie links den ersten Mitarbeiter hinzu.</span></div>';}
+function employeeCardsHtml(list){return list.map((employee,index)=>`<button class="employee-card" draggable="true" data-employee-index="${index}" ondragstart="onEmployeeDragStart(event)" ondragover="onEmployeeDragOver(event)" ondrop="onEmployeeDrop(event)" ondragend="onEmployeeDragEnd()" onclick="openEmployeeEditor(${index})"><span class="employee-card-copy"><strong>${esc(employee.name||'Ohne Name')}</strong><small>${esc(employee.number||'Keine Mitarbeitendennummer')}</small></span><img class="employee-card-qr" src="${qr(employee.code||employee.number||'SHADIERPOS-UNCONFIGURED')}" alt="QR-Code"></button>`).join('');}
+function addEmployee(){currentEmployee=null;document.getElementById('employeeName').value='';document.getElementById('employeeNumber').value='';document.getElementById('employeeCode').value='';openModal(document.getElementById('employeeModal'));}
+function openEmployeeEditor(index){currentEmployee=index;const employee=activeEmployees()[index];document.getElementById('employeeName').value=employee.name||'';document.getElementById('employeeNumber').value=employee.number||'';document.getElementById('employeeCode').value=employee.code||employee.number||'';openModal(document.getElementById('employeeModal'));}
+function closeEmployeeEditor(){document.getElementById('employeeModal').style.display='none';currentEmployee=null;}
+function saveEmployee(){const name=document.getElementById('employeeName').value.trim(),number=document.getElementById('employeeNumber').value.trim(),code=document.getElementById('employeeCode').value.trim()||number;if(!name||!number){showAlert('Bitte Name und Mitarbeitendennummer eingeben.');return;}if(name.length>42){showAlert('Der Name darf maximal 42 Zeichen haben.');return;}const employee={name,number,code};if(currentEmployee===null)activeEmployees().push(employee);else activeEmployees()[currentEmployee]=employee;closeEmployeeEditor();render();}
+async function deleteEmployee(){if(currentEmployee===null){closeEmployeeEditor();return;}if(!await showDangerConfirm('Mitarbeitendencode löschen?'))return;activeEmployees().splice(currentEmployee,1);closeEmployeeEditor();render();}
+let employeeDragSource=null;
+function onEmployeeDragStart(event){employeeDragSource=Number(event.currentTarget.dataset.employeeIndex);event.dataTransfer.effectAllowed='move';}
+function onEmployeeDragOver(event){event.preventDefault();event.currentTarget.classList.add('drag-over');}
+function onEmployeeDrop(event){event.preventDefault();const target=Number(event.currentTarget.dataset.employeeIndex);if(Number.isInteger(employeeDragSource)&&employeeDragSource!==target){const list=activeEmployees();[list[employeeDragSource],list[target]]=[list[target],list[employeeDragSource]];renderEmployees();}employeeDragSource=null;}
+function onEmployeeDragEnd(){document.querySelectorAll('.employee-card.drag-over').forEach(card=>card.classList.remove('drag-over'));employeeDragSource=null;}
+
 function updateWorkspaceContext(){
-  const page=data.pages[currentPage];
+  const employeeMode=editorMode==='employee';
+  const page=(employeeMode?employeePages():data.pages)[currentPage];
   if(!page) return;
-  const name=page.name||'Kategorie';
-  const populated=page.items.filter(item=>item.title||item.beco||item.ref||item.photo||item.price||item.ek).length;
+  const name=page.name||(employeeMode?'Filiale':'Kategorie');
+  const populated=employeeMode?page.employees.length:page.items.filter(item=>item.title||item.beco||item.ref||item.photo||item.price||item.ek).length;
   const title=document.getElementById('workspaceTitle');
   const sheetCategory=document.getElementById('sheetCategory');
   const completed=document.getElementById('completedCount');
   if(title) title.textContent=name;
   if(sheetCategory) sheetCategory.textContent=name;
+  const sheetFormat=document.getElementById('sheetFormat');
+  if(sheetFormat) sheetFormat.textContent=employeeMode?`A4 · ${populated} Mitarbeiter`:'A4 · 15 Etiketten';
+  const employeePrintHeading=document.getElementById('employeePrintHeading');
+  if(employeePrintHeading){employeePrintHeading.textContent=`Mitarbeitendencodes · ${name}`;employeePrintHeading.hidden=!employeeMode;}
   if(completed) completed.textContent=populated;
 }
 
@@ -457,6 +511,7 @@ photoPickerModal.addEventListener('click',e=>{
 categoryModal.addEventListener('click',e=>{
   if(e.target===categoryModal) closeCategoryModal();
 });
+document.getElementById('employeeModal').addEventListener('click',e=>{if(e.target===document.getElementById('employeeModal'))closeEmployeeEditor();});
 document.getElementById('catEditName').addEventListener('keydown',e=>{
   if(e.key==='Enter') saveCategoryModal();
 });

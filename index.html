@@ -29,30 +29,47 @@ FORM: Operate-first split workspace with print preview as the permanent source o
 </header>
 
 <div class="app-shell">
-  <aside class="sidebar" aria-label="Kategorie-Navigation">
+  <aside class="sidebar" aria-label="Editor-Navigation">
     <div class="sidebar-intro">
-      <p class="section-label">Katalog</p>
       <h1>Etiketten verwalten</h1>
-      <p>Bereiten Sie Druckbögen für Ihre Beschläge und Artikel vor.</p>
+      <p>Bereiten Sie Druckbögen für Artikel und Mitarbeitendencodes vor.</p>
+    </div>
+    <div class="editor-tabs" role="tablist" aria-label="Etikettentyp">
+      <button class="editor-tab active" id="furnitureTab" onclick="setEditorMode('furniture')" role="tab" aria-selected="true">Furnituren</button>
+      <button class="editor-tab" id="employeeTab" onclick="setEditorMode('employee')" role="tab" aria-selected="false">Mitarbeiter</button>
     </div>
     <div class="category-control">
-      <label for="pageSelect">Aktive Kategorie</label>
+      <label for="pageSelect" id="pageSelectLabel">Aktive Kategorie</label>
       <select id="pageSelect" onchange="changePage(this.value)" title="Kategorie auswählen"></select>
       <div class="category-actions">
-        <button class="btn btn-secondary" onclick="openCategoryModal()">Bearbeiten</button>
-        <button class="btn btn-primary" onclick="addPage()">Neue Kategorie</button>
+        <button class="btn btn-secondary" onclick="openCategoryModal()" id="editPageButton">Bearbeiten</button>
+        <button class="btn btn-primary" onclick="addPage()" id="addPageButton">Neue Kategorie</button>
+      </div>
+      <div class="employee-controls" id="employeeControls" hidden>
+        <button class="btn btn-primary" onclick="addEmployee()">Mitarbeiter hinzufügen</button>
+        <label for="employeeCardWidth">Kartenbreite (mm)</label>
+        <input id="employeeCardWidth" type="number" min="35" max="180" value="70" onchange="saveEmployeeLayout()">
+        <label for="employeeCardHeight">Kartenhöhe (mm)</label>
+        <input id="employeeCardHeight" type="number" min="12" max="80" value="17.5" step="0.5" onchange="saveEmployeeLayout()">
+        <label for="employeeQrPosition">QR-Code Position</label>
+        <select id="employeeQrPosition" onchange="saveEmployeeLayout()"><option value="right">Rechts</option><option value="left">Links</option><option value="above">Darüber</option><option value="below">Darunter</option></select>
+        <label for="employeeNameSize">Namensgröße (pt)</label>
+        <input id="employeeNameSize" type="number" min="5" max="24" value="8" step="0.5" onchange="saveEmployeeLayout()">
+        <label for="employeeNumberSize">Nummerngröße (pt)</label>
+        <input id="employeeNumberSize" type="number" min="4" max="18" value="5.5" step="0.5" onchange="saveEmployeeLayout()">
+        <label class="check-label"><input id="employeeNameBold" type="checkbox" checked onchange="saveEmployeeLayout()"> Name fett drucken</label>
       </div>
     </div>
     <div class="sidebar-note">
       <strong>Tipp</strong>
       <p>Änderungen bleiben während dieser Sitzung erhalten. Exportieren Sie Ihren Katalog regelmäßig als JSON-Datei.</p>
     </div>
+    <footer class="sidebar-attribution">Entwickelt von <strong>ShadierPond</strong><span>aka. Tariq Alsalem</span></footer>
   </aside>
 
   <main class="workspace">
     <div class="workspace-top">
       <div>
-        <p class="section-label">Druckbogen</p>
         <h2 id="workspaceTitle">Kategorie 1</h2>
       </div>
       <div class="workspace-actions">
@@ -63,14 +80,14 @@ FORM: Operate-first split workspace with print preview as the permanent source o
         <div class="menu-wrap">
           <button class="btn btn-primary" id="printMenuBtn" onclick="togglePrintMenu(event)">Drucken</button>
           <div class="menu" id="printMenu">
-            <button onclick="window.print(); closePrintMenu();">Aktuelle Kategorie drucken</button>
-            <button onclick="printAllPages(); closePrintMenu();">Alle Kategorien drucken</button>
+            <button id="printCurrentButton" onclick="window.print(); closePrintMenu();">Aktuelle Kategorie drucken</button>
+            <button id="printAllButton" onclick="printAllPages(); closePrintMenu();">Alle Kategorien drucken</button>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="workspace-meta">
+    <div class="workspace-meta" id="workspaceMeta">
       <span><strong id="completedCount">0</strong> von 15 Artikeln gepflegt</span>
       <span class="meta-divider"></span>
       <span>35 × 35 mm Etikettenformat</span>
@@ -85,9 +102,21 @@ FORM: Operate-first split workspace with print preview as the permanent source o
             <div class="page-heading">
               <span>Furnituren Editor</span>
               <strong id="sheetCategory">Kategorie 1</strong>
-              <span>A4 · 15 Etiketten</span>
+              <span id="sheetFormat">A4 · 15 Etiketten</span>
             </div>
+            <h3 id="employeePrintHeading" class="employee-print-heading" hidden></h3>
             <table id="sheet"></table>
+            <div id="employeeSheet" class="employee-sheet" hidden></div>
+          </div>
+
+          <div class="modal" id="employeeModal" role="dialog" aria-modal="true" aria-labelledby="employeeTitle">
+            <div class="modal-box modal-box--compact">
+              <div class="modal-heading"><div><h3 id="employeeTitle">Mitarbeitendencode</h3></div><button class="close-btn" onclick="closeEmployeeEditor()" aria-label="Editor schließen">×</button></div>
+              <div class="row"><label for="employeeName">Name</label><input id="employeeName" type="text" maxlength="42" placeholder="Vor- und Nachname"><small class="field-hint">Maximal 42 Zeichen, damit die Karte lesbar bleibt.</small></div>
+              <div class="row"><label for="employeeNumber">Mitarbeitendennummer</label><input id="employeeNumber" type="text" placeholder="z. B. MA-1001"></div>
+              <div class="row"><label for="employeeCode">QR-Code / Anmeldecode</label><input id="employeeCode" type="text" placeholder="Wird aus Mitarbeitendennummer übernommen"></div>
+              <div class="actions"><button class="btn btn-danger" onclick="deleteEmployee()">Löschen</button><span class="actions-spacer"></span><button class="btn btn-secondary" onclick="closeEmployeeEditor()">Abbrechen</button><button class="btn btn-primary" onclick="saveEmployee()">Übernehmen</button></div>
+            </div>
           </div>
         </div>
       </div>
@@ -119,6 +148,7 @@ FORM: Operate-first split workspace with print preview as the permanent source o
       <li><strong>Fotos:</strong> Klicken Sie auf den Fotobereich eines Etiketts, um ein Bild aus der Bibliothek zuzuordnen.</li>
       <li><strong>Sortierung:</strong> Ziehen Sie Etiketten per Drag &amp; Drop auf eine andere Position.</li>
       <li><strong>QR-Code:</strong> Erzeugt sich automatisch aus der Referenz; Quick Service verwendet die Beschreibung.</li>
+      <li><strong>Mitarbeitende:</strong> Wechseln Sie links zu „Mitarbeiter“, um QR-Anmeldekarten mit Name und Mitarbeitendennummer zu erstellen.</li>
       <li><strong>Sicherung:</strong> Exportieren Sie den Katalog als JSON-Datei, um Daten dauerhaft zu speichern.</li>
     </ul>
     <div class="info-actions"><button class="btn btn-primary" onclick="closeInfo()">Verstanden</button></div>
