@@ -1,4 +1,4 @@
-# Furnituren Editor
+# Furnituren & Mitarbeiter Editor
 
 Ein browserbasierter, statischer Editor für druckfertige Furnituren-Etiketten
 und QR-Code-Karten für Mitarbeitende. Er benötigt keinen Server und keine
