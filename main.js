@@ -402,8 +402,7 @@ function runSearch(){
       });
     });
   }
-  const visible=matches.slice(0,25);
-  results.innerHTML=visible.length?`<div class="search-result-count">${matches.length} ${matches.length===1?'Treffer':'Treffer'}</div>${visible.map(match=>`<button type="button" class="search-result" onclick="selectSearchResult(${match.pageIndex},${match.itemIndex})"><strong>${esc(match.title)}</strong><span>${esc(match.detail)}</span></button>`).join('')}`:'<p class="search-empty">Keine Treffer gefunden.</p>';
+  results.innerHTML=matches.length?`<div class="search-result-count">${matches.length} Treffer</div>${matches.map(match=>`<button type="button" class="search-result" onclick="selectSearchResult(${match.pageIndex},${match.itemIndex})"><strong>${esc(match.title)}</strong><span>${esc(match.detail)}</span></button>`).join('')}`:'<p class="search-empty">Keine Treffer gefunden.</p>';
 }
 function clearSearch(){const input=document.getElementById('globalSearch');input.value='';runSearch();input.focus();}
 function selectSearchResult(pageIndex,itemIndex){
