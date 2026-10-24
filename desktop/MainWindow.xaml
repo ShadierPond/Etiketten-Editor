@@ -406,12 +406,14 @@
                                     <DataGridTemplateColumn Header="Quick Service" Width="110">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <CheckBox IsChecked="{Binding QuickService, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          HorizontalAlignment="Center"
-                                                          VerticalAlignment="Center"
-                                                          Checked="QuickServiceCheckBox_Changed"
-                                                          Unchecked="QuickServiceCheckBox_Changed"
-                                                          ToolTip="Quick-Service-Artikel verwenden einen QR-Code" />
+                                                <Grid HorizontalAlignment="Stretch">
+                                                    <CheckBox IsChecked="{Binding QuickService, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                              HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"
+                                                              Checked="QuickServiceCheckBox_Changed"
+                                                              Unchecked="QuickServiceCheckBox_Changed"
+                                                              ToolTip="Quick-Service-Artikel verwenden einen QR-Code" />
+                                                </Grid>
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
