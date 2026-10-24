@@ -15,7 +15,7 @@ internal sealed class GitHubUpdateService
 {
     private const string ClientId = "Iv23lilyRMBabzNQezH4";
     private const string Owner = "ShadierPond";
-    private const string Repository = "Funituren-Editor-Updates";
+    private const string Repository = "Etiketten-Editor";
     private const string ApplicationName = "FuniturenEditor";
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("ShadierPond.FuniturenEditor.GitHubUpdates.v1");
     private static readonly HttpClient Http = CreateHttpClient();
@@ -91,7 +91,7 @@ internal sealed class GitHubUpdateService
         throw new TimeoutException("Der GitHub-Anmeldecode ist abgelaufen. Bitte erneut versuchen.");
     }
 
-    public async Task<UpdateRelease> GetLatestReleaseAsync(string token, CancellationToken cancellationToken)
+    public async Task<UpdateRelease> GetLatestReleaseAsync(string? token, CancellationToken cancellationToken)
     {
         using var request = CreateAuthorizedRequest(
             HttpMethod.Get,
@@ -114,7 +114,7 @@ internal sealed class GitHubUpdateService
 
     public async Task<string> DownloadAndStageAsync(
         UpdateRelease release,
-        string token,
+        string? token,
         CancellationToken cancellationToken)
     {
         using var request = CreateAuthorizedRequest(HttpMethod.Get, release.AssetApiUrl, token);
@@ -276,10 +276,11 @@ internal sealed class GitHubUpdateService
         File.WriteAllBytes(tokenPath, protectedToken);
     }
 
-    private static HttpRequestMessage CreateAuthorizedRequest(HttpMethod method, string url, string token)
+    private static HttpRequestMessage CreateAuthorizedRequest(HttpMethod method, string url, string? token)
     {
         var request = new HttpRequestMessage(method, url);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        if (!string.IsNullOrWhiteSpace(token))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         request.Headers.Add("X-GitHub-Api-Version", "2022-11-28");
         return request;

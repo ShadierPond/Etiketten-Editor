@@ -882,15 +882,9 @@ public partial class MainWindow : Window
     private async Task CheckForAvailableUpdateOnStartupAsync()
     {
         var updater = new GitHubUpdateService();
-        if (!updater.IsAuthenticated)
-            return;
-
         try
         {
             var token = await updater.GetTokenAsync(updateCheckCancellation.Token);
-            if (token is null)
-                return;
-
             var release = await updater.GetLatestReleaseAsync(token, updateCheckCancellation.Token);
             var currentVersion = GetType().Assembly.GetName().Version;
             if (!GitHubUpdateService.IsNewerVersion(release.Version, currentVersion))

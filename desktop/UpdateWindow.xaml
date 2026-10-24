@@ -12,20 +12,18 @@
         </Grid.RowDefinitions>
         <StackPanel>
             <TextBlock Text="Softwareupdates" FontSize="22" FontWeight="SemiBold" Foreground="#172B42" />
-            <TextBlock Text="Updates werden aus dem privaten GitHub-Repository geladen. Die Anmeldung ist optional."
+            <TextBlock Text="Updates werden aus dem öffentlichen GitHub-Repository geladen. Eine Anmeldung ist nicht erforderlich."
                        TextWrapping="Wrap" Foreground="#657586" Margin="0,6,0,0" />
         </StackPanel>
         <StackPanel Grid.Row="1" VerticalAlignment="Center">
-            <TextBlock x:Name="StatusText" Text="Nicht mit GitHub verbunden." FontSize="14"
+            <TextBlock x:Name="StatusText" Text="Bereit für die Updateprüfung." FontSize="14"
                        TextWrapping="Wrap" Foreground="#244A73" />
             <TextBlock x:Name="DeviceCodeText" Visibility="Collapsed" FontSize="23"
                        FontWeight="Bold" Foreground="#18344F" Margin="0,12,0,0" />
         </StackPanel>
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button x:Name="SignInButton" Content="Mit GitHub verbinden" Click="SignIn_Click" />
             <Button x:Name="CheckButton" Content="Nach Updates suchen" Click="Check_Click" />
             <Button x:Name="InstallButton" Content="Update installieren" Click="Install_Click" IsEnabled="False" />
-            <Button x:Name="SignOutButton" Content="Abmelden" Click="SignOut_Click" Visibility="Collapsed" />
             <Button Content="Schließen" IsCancel="True" Margin="0" />
         </StackPanel>
     </Grid>

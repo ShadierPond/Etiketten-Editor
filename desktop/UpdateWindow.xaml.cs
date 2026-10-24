@@ -19,36 +19,6 @@ public partial class UpdateWindow : Window
             Loaded += async (_, _) => await CheckForUpdatesAsync();
     }
 
-    private async void SignIn_Click(object sender, RoutedEventArgs e)
-    {
-        SetBusy(true);
-        DeviceCodeText.Visibility = Visibility.Collapsed;
-        try
-        {
-            await updater.AuthorizeAsync(
-                code =>
-                {
-                    DeviceCodeText.Text = $"Code: {code}";
-                    DeviceCodeText.Visibility = Visibility.Visible;
-                },
-                status => StatusText.Text = status,
-                cancellation.Token);
-            StatusText.Text = "GitHub ist verbunden. Die Anmeldung wird geschützt auf diesem Windows-Konto gespeichert.";
-            RefreshAuthenticationState();
-        }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-        {
-        }
-        catch (Exception exception)
-        {
-            StatusText.Text = exception.Message;
-        }
-        finally
-        {
-            SetBusy(false);
-        }
-    }
-
     private async void Check_Click(object sender, RoutedEventArgs e)
     {
         await CheckForUpdatesAsync();
@@ -115,31 +85,14 @@ public partial class UpdateWindow : Window
         }
     }
 
-    private void SignOut_Click(object sender, RoutedEventArgs e)
-    {
-        updater.SignOut();
-        availableUpdate = null;
-        stagedArchive = null;
-        InstallButton.IsEnabled = false;
-        StatusText.Text = "Von GitHub abgemeldet. Die lokale Anwendung funktioniert weiterhin.";
-        RefreshAuthenticationState();
-    }
-
     private void RefreshAuthenticationState()
     {
-        var authenticated = updater.IsAuthenticated;
-        SignInButton.Visibility = authenticated ? Visibility.Collapsed : Visibility.Visible;
-        SignOutButton.Visibility = authenticated ? Visibility.Visible : Visibility.Collapsed;
-        CheckButton.IsEnabled = authenticated;
-        if (authenticated)
-            StatusText.Text = "Mit GitHub verbunden. Du kannst nach neuen Updates suchen.";
+        CheckButton.IsEnabled = true;
     }
 
     private void SetBusy(bool busy)
     {
-        SignInButton.IsEnabled = !busy;
-        CheckButton.IsEnabled = !busy && updater.IsAuthenticated;
-        SignOutButton.IsEnabled = !busy;
+        CheckButton.IsEnabled = !busy;
         InstallButton.IsEnabled = !busy && stagedArchive is not null;
     }
 }

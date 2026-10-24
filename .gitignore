@@ -7,3 +7,4 @@ server/publish/
 desktop/*.db*
 desktop/publish/
 desktop/installer-output/
+.impeccable/

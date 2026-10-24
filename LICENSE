@@ -1,0 +1,65 @@
+Etiketten Editor Source-Available License
+Version 1.0, 2026
+
+Copyright (c) 2026 Tariq Alsalem / ShadierPond
+
+1. Definitions
+
+“Software” means this repository, its source code, documentation, assets,
+build scripts, installer packages, update packages, and modified versions of
+any of these materials.
+
+“You” means an individual or organization exercising the permissions granted
+by this license.
+
+2. Permission to use and build
+
+Permission is granted to:
+
+  a. download, inspect, and internally use the Software;
+  b. build the Software from source for internal use;
+  c. modify the source code and build modified versions for internal use; and
+  d. download and internally use the official installers and update packages
+     published by the copyright holder.
+
+These permissions apply only while you comply with all terms of this license.
+
+3. Restrictions
+
+You may not, without prior written permission from the copyright holder:
+
+  a. sell, license, rent, lease, or otherwise commercialize the Software or
+     any modified version as a product or service;
+  b. publish, redistribute, mirror, sublicense, or make available the source
+     code, installers, updates, or modified versions to third parties;
+  c. provide the Software or a modified version as hosted, online, SaaS,
+     managed, or downloadable service;
+  d. distribute even a modified version containing only minor changes;
+  e. remove copyright, trademark, attribution, or license notices; or
+  f. use the name “Etiketten Editor”, “Funituren Editor”, “ShadierPond”, or
+     “Tariq Alsalem” to imply endorsement of a modified version.
+
+4. Third-party materials
+
+Third-party libraries, fonts, icons, and other materials remain subject to
+their own licenses. This license does not replace or restrict those licenses.
+
+5. No warranty
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING
+FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OF THE SOFTWARE.
+
+6. Termination
+
+Your rights under this license terminate automatically if you violate its
+terms. Upon termination, you must stop using the Software and delete copies
+that are no longer permitted under this license.
+
+7. Additional permission
+
+The copyright holder may grant additional permissions in writing. Such
+permission must identify the specific use and may be limited to a particular
+version, organization, or distribution channel.
