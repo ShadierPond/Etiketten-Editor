@@ -33,6 +33,12 @@ function esc(s=''){
 function qr(ref){
   return 'https://api.qrserver.com/v1/create-qr-code/?size=140x140&data='+encodeURIComponent(ref);
 }
+function quickServiceQrContent(item){
+  const title=String(item.title||'').trim();
+  const beco=String(item.beco||'').trim();
+  const becoLabel=beco?(/^BECO\s*/i.test(beco)?beco.replace(/^BECO\s*/i,'BECO'): `BECO${beco}`):'';
+  return [title,becoLabel].filter(Boolean).join(' ');
+}
 function items(){ return data.pages[currentPage].items; }
 function employeeLayout(){ return {...{width:70,height:17.5,qrPosition:'right',nameSize:8,numberSize:5.5,nameBold:true},...(data.employeeLayout||{})}; }
 function employeePages(){ return data.employeePages||[]; }
@@ -135,6 +141,93 @@ function exportJson(){
   a.click();
   URL.revokeObjectURL(a.href);
 }
+function crc32(bytes){
+  let crc=0xffffffff;
+  for(const byte of bytes){
+    crc^=byte;
+    for(let bit=0;bit<8;bit++) crc=(crc>>>1)^((crc&1)?0xedb88320:0);
+  }
+  return (crc^0xffffffff)>>>0;
+}
+function zipStoredFiles(files){
+  const encoder=new TextEncoder();
+  const localParts=[],centralParts=[];
+  let offset=0;
+  for(const file of files){
+    const filename=encoder.encode(file.name),content=file.content,checksum=crc32(content);
+    const local=new Uint8Array(30+filename.length),localView=new DataView(local.buffer);
+    localView.setUint32(0,0x04034b50,true);
+    localView.setUint16(4,20,true);
+    localView.setUint16(6,0x0800,true);
+    localView.setUint32(14,checksum,true);
+    localView.setUint32(18,content.length,true);
+    localView.setUint32(22,content.length,true);
+    localView.setUint16(26,filename.length,true);
+    local.set(filename,30);
+    localParts.push(local,content);
+
+    const central=new Uint8Array(46+filename.length),centralView=new DataView(central.buffer);
+    centralView.setUint32(0,0x02014b50,true);
+    centralView.setUint16(4,20,true);
+    centralView.setUint16(6,20,true);
+    centralView.setUint16(8,0x0800,true);
+    centralView.setUint32(16,checksum,true);
+    centralView.setUint32(20,content.length,true);
+    centralView.setUint32(24,content.length,true);
+    centralView.setUint16(28,filename.length,true);
+    centralView.setUint32(42,offset,true);
+    central.set(filename,46);
+    centralParts.push(central);
+    offset+=local.length+content.length;
+  }
+  const centralSize=centralParts.reduce((total,part)=>total+part.length,0);
+  const end=new Uint8Array(22),endView=new DataView(end.buffer);
+  endView.setUint32(0,0x06054b50,true);
+  endView.setUint16(8,files.length,true);
+  endView.setUint16(10,files.length,true);
+  endView.setUint32(12,centralSize,true);
+  endView.setUint32(16,offset,true);
+  return new Blob([...localParts,...centralParts,end],{type:'application/zip'});
+}
+function safeQrFilename(value){
+  const filename=value.replace(/[<>:"/\\|?*\u0000-\u001f]/g,' ').replace(/\s+/g,' ').trim().replace(/[. ]+$/,'').slice(0,150);
+  return filename&&!/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(filename)?filename:'Quick-Service';
+}
+async function downloadQuickServiceQrs(){
+  const button=document.getElementById('downloadQuickServiceQrsButton');
+  const products=data.pages.flatMap(page=>page.items
+    .filter(item=>item.quickService&&String(item.title||'').trim())
+    .map(item=>({name:quickServiceQrContent(item),content:quickServiceQrContent(item)})));
+  if(!products.length){
+    await showAlert('Es wurden keine Quick-Service-Artikel mit Beschreibung gefunden.');
+    return;
+  }
+  button.disabled=true;
+  button.textContent=`QR-Codes werden erstellt (0/${products.length}) …`;
+  try{
+    const files=[],nameCounts=new Map();
+    for(let index=0;index<products.length;index++){
+      const product=products[index];
+      const response=await fetch(qr(product.content));
+      if(!response.ok) throw new Error(`Der QR-Code-Dienst antwortet mit HTTP ${response.status}.`);
+      const bytes=new Uint8Array(await response.arrayBuffer());
+      const base=safeQrFilename(product.name),count=(nameCounts.get(base)||0)+1;
+      nameCounts.set(base,count);
+      files.push({name:`${base}${count>1?` (${count})`:''}.png`,content:bytes});
+      button.textContent=`QR-Codes werden erstellt (${index+1}/${products.length}) …`;
+    }
+    const blob=zipStoredFiles(files),url=URL.createObjectURL(blob),link=document.createElement('a');
+    link.href=url;
+    link.download='quick-service-qr-codes.zip';
+    link.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(error){
+    await showAlert(`Die Quick-Service-QR-Codes konnten nicht heruntergeladen werden. Prüfen Sie die Internetverbindung und versuchen Sie es erneut.\n\n${error.message}`);
+  }finally{
+    button.disabled=false;
+    updateQuickServiceDownloadButton();
+  }
+}
 function importJson(event){
   const file=event.target.files&&event.target.files[0];
   if(!file) return;
@@ -200,7 +293,7 @@ function cell(item,i){
     ? `<img src="${photoUrl}" alt="Foto" style="display:block"><div class="ph" style="display:none">Foto</div>`
     : `<img src="" alt="Foto"><div class="ph">Foto</div>`;
 
-  const qrSource=item.quickService?item.title:item.ref;
+  const qrSource=item.quickService?quickServiceQrContent(item):item.ref;
   const qrHtml=qrSource
     ? `<div class="visual-slot qr-box"><img src="${qr(qrSource)}" alt="QR"></div><div class="qr-ref">${item.quickService?'':esc(item.ref)}</div>`
     : `<div class="visual-slot"><div class="no-qr">kein QR</div></div><div class="qr-ref"></div>`;
@@ -423,6 +516,7 @@ function selectSearchResult(pageIndex,itemIndex){
 
 function updateWorkspaceContext(){
   const employeeMode=editorMode==='employee';
+  updateQuickServiceDownloadButton();
   const page=(employeeMode?employeePages():data.pages)[currentPage];
   if(!page) return;
   const name=page.name||(employeeMode?'Filiale':'Kategorie');
@@ -437,6 +531,14 @@ function updateWorkspaceContext(){
   const employeePrintHeading=document.getElementById('employeePrintHeading');
   if(employeePrintHeading){employeePrintHeading.textContent=`Mitarbeitendencodes · ${name}`;employeePrintHeading.hidden=!employeeMode;}
   if(completed) completed.textContent=populated;
+}
+function updateQuickServiceDownloadButton(){
+  const button=document.getElementById('downloadQuickServiceQrsButton');
+  if(!button) return;
+  const count=data.pages.reduce((total,page)=>total+page.items.filter(item=>item.quickService&&String(item.title||'').trim()).length,0);
+  button.hidden=editorMode==='employee';
+  button.disabled=count===0;
+  button.textContent=`Quick-Service-QRs herunterladen (${count})`;
 }
 
 function openEditor(i){

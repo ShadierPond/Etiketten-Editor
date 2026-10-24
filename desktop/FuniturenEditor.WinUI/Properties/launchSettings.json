@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "FuniturenEditor.WinUI (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "FuniturenEditor.WinUI (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

@@ -87,6 +87,7 @@ FORM: Operate-first split workspace with print preview as the permanent source o
           <label for="zoomRange">Ansicht <span id="zoomValue">100%</span></label>
           <input id="zoomRange" type="range" min="0.8" max="2.2" step="0.1" value="1" oninput="setScale(this.value)">
         </div>
+        <button class="btn btn-secondary" id="downloadQuickServiceQrsButton" type="button" onclick="downloadQuickServiceQrs()" hidden disabled>Quick-Service-QRs herunterladen (0)</button>
         <div class="menu-wrap">
           <button class="btn btn-primary" id="printMenuBtn" onclick="togglePrintMenu(event)">Drucken</button>
           <div class="menu" id="printMenu">
@@ -157,7 +158,7 @@ FORM: Operate-first split workspace with print preview as the permanent source o
       <li><strong>Artikel:</strong> Klicken Sie auf das Stiftsymbol eines Etiketts, um Beschreibung, Preise und Referenz zu pflegen.</li>
       <li><strong>Fotos:</strong> Klicken Sie auf den Fotobereich eines Etiketts, um ein Bild aus der Bibliothek zuzuordnen.</li>
       <li><strong>Sortierung:</strong> Ziehen Sie Etiketten per Drag &amp; Drop auf eine andere Position.</li>
-      <li><strong>QR-Code:</strong> Erzeugt sich automatisch aus der Referenz; Quick Service verwendet die Beschreibung.</li>
+      <li><strong>QR-Code:</strong> Erzeugt sich automatisch aus der Referenz; Quick Service verwendet Beschreibung und Beco-Code. Alle Quick-Service-QR-Codes können gesammelt als ZIP-Datei heruntergeladen werden.</li>
       <li><strong>Mitarbeitende:</strong> Wechseln Sie links zu „Mitarbeiter“, um QR-Anmeldekarten mit Name und Mitarbeitendennummer zu erstellen.</li>
       <li><strong>Sicherung:</strong> Exportieren Sie den Katalog als JSON-Datei, um Daten dauerhaft zu speichern.</li>
     </ul>

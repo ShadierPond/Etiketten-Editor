@@ -1,0 +1,508 @@
+<Window x:Class="FuniturenEditor.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:svgc="clr-namespace:SharpVectors.Converters;assembly=SharpVectors.Converters.Wpf"
+        Title="Furnituren Editor" Height="820" Width="1500"
+        MinHeight="600" MinWidth="900" WindowStartupLocation="CenterScreen"
+        Background="#F2F5F8">
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="#18344F" Padding="22,14">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Background="#FFFFFF" CornerRadius="6" Padding="4" Margin="0,0,14,0">
+                        <Image Source="pack://application:,,,/assets/FuniturenEditor.ico" Width="30" Height="30"
+                               Stretch="Uniform" />
+                    </Border>
+                    <StackPanel>
+                        <TextBlock Text="Furnituren Editor" Foreground="White" FontSize="19" FontWeight="SemiBold" />
+                        <TextBlock Text="Lokaler Arbeitsbereich" Foreground="#B8C7D6" FontSize="12" />
+                    </StackPanel>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Nach Updates suchen" Click="CheckUpdates_Click" />
+                    <Button Click="Import_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <svgc:SvgViewbox Width="16" Height="16" Margin="0,0,7,0"
+                                              Source="/assets/icons/input-icon.svg" />
+                            <TextBlock Text="Importieren" />
+                        </StackPanel>
+                    </Button>
+                    <Button Click="Export_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <svgc:SvgViewbox Width="16" Height="16" Margin="0,0,7,0"
+                                              Source="/assets/icons/download-bold-arrow-icon.svg" />
+                            <TextBlock Text="Exportieren" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="PreviewToggleButton" Click="TogglePreview_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <svgc:SvgViewbox Width="16" Height="16" Margin="0,0,7,0"
+                                              Source="/assets/icons/find-icon.svg" />
+                            <TextBlock Text="Vorschau ausblenden" />
+                        </StackPanel>
+                    </Button>
+                    <Button Click="ShowActionMenu_Click">
+                        <Button.Content>
+                            <StackPanel Orientation="Horizontal">
+                                <svgc:SvgViewbox Width="16" Height="16" Margin="0,0,7,0"
+                                                  Source="/assets/icons/print-icon.svg" />
+                                <TextBlock Text="Drucken ▾" />
+                            </StackPanel>
+                        </Button.Content>
+                        <Button.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Aktuelle Kategorie" Click="PrintCurrent_Click" />
+                                <MenuItem Header="Alle Kategorien" Click="PrintAll_Click" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                    <Button Click="ShowActionMenu_Click">
+                        <Button.Content>
+                            <StackPanel Orientation="Horizontal">
+                                <svgc:SvgViewbox Width="16" Height="16" Margin="0,0,7,0"
+                                                  Source="/assets/icons/pdf-icon.svg" />
+                                <TextBlock Text="Als PDF speichern ▾" />
+                            </StackPanel>
+                        </Button.Content>
+                        <Button.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Aktuelle Kategorie" Click="SaveCurrentAsPdf_Click" />
+                                <MenuItem Header="Alle Kategorien" Click="SaveAllAsPdf_Click" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                    <Button Click="QuickServiceQr_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <svgc:SvgViewbox Width="16" Height="16" Margin="0,0,7,0"
+                                              Source="/assets/icons/barcode-scan-icon.svg" />
+                            <TextBlock Text="Quick-Service-QRs ZIP" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Margin="22">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Border Grid.Row="0" Background="White" BorderBrush="#D8E0E8" BorderThickness="1"
+                    CornerRadius="8" Padding="16" Margin="0,0,0,14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="SearchBox" Grid.Row="0" Grid.Column="1" Width="430" HorizontalAlignment="Left"
+                             VerticalAlignment="Center" TextChanged="SearchBox_TextChanged"
+                             GotKeyboardFocus="SearchBox_GotKeyboardFocus"
+                             PreviewMouseLeftButtonDown="SearchBox_PreviewMouseLeftButtonDown"
+                             Padding="34,6,10,6"
+                             ToolTip="Alle Kategorien nach Beschreibung, BECO, Referenz oder Preis durchsuchen" />
+                    <svgc:SvgViewbox Grid.Row="0" Grid.Column="1"
+                                      Width="16" Height="16"
+                                      Margin="11,0,0,0"
+                                      HorizontalAlignment="Left"
+                                      VerticalAlignment="Center"
+                                      IsHitTestVisible="False"
+                                      Source="/assets/icons/find-icon.svg" />
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="SQLite · automatisch gespeichert" Foreground="#56715E"
+                               VerticalAlignment="Center" FontWeight="SemiBold" />
+                    <ListBox x:Name="SearchResultsBox" Grid.Row="1" Grid.ColumnSpan="3" MaxHeight="155"
+                             Margin="0,10,0,0" Visibility="Collapsed" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             SelectionChanged="SearchResultsBox_SelectionChanged"
+                             DisplayMemberPath="DisplayText" />
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="EditorColumn" Width="3*" />
+                    <ColumnDefinition x:Name="PreviewSplitterColumn" Width="6" />
+                    <ColumnDefinition x:Name="PreviewColumn" Width="2*" />
+                </Grid.ColumnDefinitions>
+                <TabControl Grid.Column="0" x:Name="EditorTabs" SelectionChanged="EditorTabs_SelectionChanged"
+                            Background="Transparent" BorderThickness="0">
+                    <TabControl.Template>
+                        <ControlTemplate TargetType="TabControl">
+                            <Grid KeyboardNavigation.TabNavigation="Local"
+                                  SnapsToDevicePixels="True">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <TabPanel x:Name="HeaderPanel"
+                                          IsItemsHost="True"
+                                          Margin="12,0,0,0"
+                                          KeyboardNavigation.TabIndex="1" />
+                                <ContentPresenter x:Name="PART_SelectedContentHost"
+                                                  Grid.Row="1"
+                                                  Margin="0"
+                                                  ContentSource="SelectedContent"
+                                                  KeyboardNavigation.TabIndex="2" />
+                            </Grid>
+                        </ControlTemplate>
+                    </TabControl.Template>
+                    <TabControl.Resources>
+                        <Style TargetType="TabItem">
+                            <Setter Property="Foreground" Value="#526B83" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                            <Setter Property="Padding" Value="16,9" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="TabItem">
+                                        <Border x:Name="TabBorder"
+                                                Padding="{TemplateBinding Padding}"
+                                                Background="Transparent"
+                                                BorderBrush="Transparent"
+                                                BorderThickness="1,1,1,0"
+                                                CornerRadius="8,8,0,0"
+                                                SnapsToDevicePixels="True">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"
+                                                              ContentSource="Header"
+                                                              RecognizesAccessKey="True" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="TabBorder" Property="Background" Value="#E8F1FA" />
+                                                <Setter Property="Foreground" Value="#244A73" />
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="TabBorder" Property="Background" Value="White" />
+                                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#D8E0E8" />
+                                                <Setter Property="Foreground" Value="#18344F" />
+                                            </Trigger>
+                                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#244A73" />
+                                            </Trigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter Property="Foreground" Value="#9AA8B5" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </TabControl.Resources>
+                <TabItem Header="Furnituren">
+                    <Border Background="White" BorderBrush="#D8E0E8" BorderThickness="1"
+                            CornerRadius="8" Padding="18" Margin="0">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
+                                <TextBlock Text="Furnituren-Katalog" FontSize="22" FontWeight="SemiBold"
+                                           Foreground="#172B42" />
+                                <TextBlock Text="Artikel und Kategorien direkt in der lokalen Datenbank pflegen."
+                                           Foreground="#657586" Margin="0,4,0,14" />
+                                <TextBlock x:Name="FurnitureCountText" Foreground="#657586" Margin="0,0,0,10" />
+                                <DockPanel>
+                                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                                        <Button Content="Etikettenvorlage…" Click="EditFurnitureLayout_Click" />
+                                        <Button Click="AddFurniturePage_Click">
+                                            <StackPanel Orientation="Horizontal">
+                                                <svgc:SvgViewbox Width="16" Height="16" Margin="0,0,7,0"
+                                                                  Source="/assets/icons/folder-plus-icon.svg" />
+                                                <TextBlock Text="Neue Kategorie" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Click="RenameFurniturePage_Click">
+                                            <StackPanel Orientation="Horizontal">
+                                                <svgc:SvgViewbox Width="16" Height="16" Margin="0,0,7,0"
+                                                                  Source="/assets/icons/folder-rename-icon.svg" />
+                                                <TextBlock Text="Umbenennen" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Click="DeleteFurniturePage_Click" Margin="0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <svgc:SvgViewbox Width="16" Height="16" Margin="0,0,7,0"
+                                                                  Source="/assets/icons/folder-delete-icon.svg" />
+                                                <TextBlock Text="Kategorie löschen" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                    <ComboBox x:Name="FurniturePageBox" Width="300" HorizontalAlignment="Left"
+                                              VerticalContentAlignment="Center"
+                                              ItemsSource="{Binding FurniturePageNames}"
+                                              SelectionChanged="FurniturePageBox_SelectionChanged" />
+                                </DockPanel>
+                            </StackPanel>
+                            <DataGrid x:Name="FurnitureGrid" AutoGenerateColumns="False" CanUserAddRows="False"
+                                      DockPanel.Dock="Top"
+                                      CanUserDeleteRows="False" IsReadOnly="False" SelectionMode="Single"
+                                      AllowDrop="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                                      AlternatingRowBackground="#F7F9FB" RowHeight="38"
+                                      CellEditEnding="FurnitureGrid_CellEditEnding"
+                                      SelectionChanged="FurnitureGrid_SelectionChanged"
+                                      PreviewMouseLeftButtonDown="FurnitureGrid_PreviewMouseLeftButtonDown"
+                                      PreviewMouseMove="FurnitureGrid_PreviewMouseMove"
+                                      PreviewMouseLeftButtonUp="FurnitureGrid_PreviewMouseLeftButtonUp"
+                                      DragOver="FurnitureGrid_DragOver"
+                                      Drop="FurnitureGrid_Drop"
+                                      ContextMenuOpening="FurnitureGrid_ContextMenuOpening">
+                                <DataGrid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Etikett löschen" Click="DeleteFurnitureItem_Click" />
+                                        <MenuItem Header="Leeren (zurücksetzen)" Click="ResetItem_Click" />
+                                        <Separator />
+                                        <MenuItem x:Name="MoveFurnitureUpMenuItem" Header="Nach oben verschieben"
+                                                  Click="MoveFurnitureUp_Click" />
+                                        <MenuItem x:Name="MoveFurnitureDownMenuItem" Header="Nach unten verschieben"
+                                                  Click="MoveFurnitureDown_Click" />
+                                    </ContextMenu>
+                                </DataGrid.ContextMenu>
+                                <DataGrid.Resources>
+                                    <Style x:Key="CenteredCellText" TargetType="TextBlock">
+                                        <Setter Property="TextAlignment" Value="Center" />
+                                        <Setter Property="VerticalAlignment" Value="Center" />
+                                    </Style>
+                                    <Style x:Key="CenteredCellEditor" TargetType="TextBox">
+                                        <Setter Property="TextAlignment" Value="Center" />
+                                        <Setter Property="VerticalContentAlignment" Value="Center" />
+                                    </Style>
+                                    <Style x:Key="DescriptionCellText" TargetType="TextBlock">
+                                        <Setter Property="TextAlignment" Value="Left" />
+                                        <Setter Property="VerticalAlignment" Value="Center" />
+                                    </Style>
+                                    <Style x:Key="DescriptionCellEditor" TargetType="TextBox">
+                                        <Setter Property="TextAlignment" Value="Left" />
+                                        <Setter Property="VerticalContentAlignment" Value="Center" />
+                                    </Style>
+                                    <Style x:Key="PhotoPickerButton" TargetType="Button">
+                                        <Setter Property="Padding" Value="0" />
+                                        <Setter Property="Margin" Value="0" />
+                                        <Setter Property="MinHeight" Value="0" />
+                                        <Setter Property="Background" Value="Transparent" />
+                                        <Setter Property="BorderBrush" Value="#C8D5E1" />
+                                        <Setter Property="BorderThickness" Value="1" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="PhotoBorder"
+                                                            Background="{TemplateBinding Background}"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                                            CornerRadius="4"
+                                                            SnapsToDevicePixels="True">
+                                                        <ContentPresenter HorizontalAlignment="Center"
+                                                                          VerticalAlignment="Center" />
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="PhotoBorder" Property="BorderBrush" Value="#527FA9" />
+                                                            <Setter TargetName="PhotoBorder" Property="Background" Value="#E8F1FA" />
+                                                        </Trigger>
+                                                        <Trigger Property="IsKeyboardFocused" Value="True">
+                                                            <Setter TargetName="PhotoBorder" Property="BorderBrush" Value="#244A73" />
+                                                            <Setter TargetName="PhotoBorder" Property="BorderThickness" Value="2" />
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </DataGrid.Resources>
+                                <DataGrid.ColumnHeaderStyle>
+                                    <Style TargetType="DataGridColumnHeader">
+                                        <Setter Property="HorizontalContentAlignment" Value="Center" />
+                                        <Setter Property="VerticalContentAlignment" Value="Center" />
+                                    </Style>
+                                </DataGrid.ColumnHeaderStyle>
+                                <DataGrid.CellStyle>
+                                    <Style TargetType="DataGridCell"
+                                           BasedOn="{StaticResource {x:Type DataGridCell}}">
+                                        <Setter Property="HorizontalContentAlignment" Value="Center" />
+                                        <Setter Property="VerticalContentAlignment" Value="Center" />
+                                    </Style>
+                                </DataGrid.CellStyle>
+                                <DataGrid.RowStyle>
+                                    <Style TargetType="DataGridRow">
+                                        <Setter Property="Background" Value="Transparent" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsHighlighted}" Value="True">
+                                                <Setter Property="Background" Value="#FFFFD982" />
+                                                <Setter Property="Effect">
+                                                    <Setter.Value>
+                                                        <DropShadowEffect Color="#FFFFA500" BlurRadius="14"
+                                                                          ShadowDepth="0" Opacity="0.9" />
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsDragTarget}" Value="True">
+                                                <Setter Property="Background" Value="#DCEBFF" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DataGrid.RowStyle>
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Pos. ↕" Binding="{Binding Index}" IsReadOnly="True" Width="64"
+                                                        ElementStyle="{StaticResource CenteredCellText}">
+                                        <DataGridTextColumn.CellStyle>
+                                            <Style TargetType="DataGridCell"
+                                                   BasedOn="{StaticResource {x:Type DataGridCell}}">
+                                                <Setter Property="Cursor" Value="SizeAll" />
+                                                <Setter Property="ToolTip" Value="Positionsnummer halten und auf eine neue Position ziehen; Vorschau und Druck werden aktualisiert" />
+                                            </Style>
+                                        </DataGridTextColumn.CellStyle>
+                                    </DataGridTextColumn>
+                                    <DataGridTemplateColumn Header="Foto" Width="58">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Button Click="EditRowPhoto_Click" Style="{StaticResource PhotoPickerButton}"
+                                                        ToolTip="Foto für dieses Etikett auswählen">
+                                                    <Image Source="{Binding PhotoPath}" Width="42" Height="32" Stretch="Uniform" />
+                                                </Button>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Beschreibung" Binding="{Binding Title, UpdateSourceTrigger=PropertyChanged}" Width="2*"
+                                                        ElementStyle="{StaticResource DescriptionCellText}"
+                                                        EditingElementStyle="{StaticResource DescriptionCellEditor}" />
+                                    <DataGridTextColumn Header="BECO" Binding="{Binding Beco, UpdateSourceTrigger=PropertyChanged}" Width="*"
+                                                        ElementStyle="{StaticResource CenteredCellText}"
+                                                        EditingElementStyle="{StaticResource CenteredCellEditor}" />
+                                    <DataGridTextColumn Header="Referenz" Binding="{Binding Ref, UpdateSourceTrigger=PropertyChanged}" Width="*"
+                                                        ElementStyle="{StaticResource CenteredCellText}"
+                                                        EditingElementStyle="{StaticResource CenteredCellEditor}" />
+                                    <DataGridTemplateColumn Header="Code" Width="100">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <ComboBox ItemsSource="{Binding CodeTypeOptions}"
+                                                          SelectedItem="{Binding CodeType, UpdateSourceTrigger=PropertyChanged}"
+                                                          IsEnabled="{Binding CanChooseBarcode}"
+                                                          HorizontalContentAlignment="Center"
+                                                          VerticalContentAlignment="Center"
+                                                          SelectionChanged="CodeTypeComboBox_SelectionChanged"
+                                                          ToolTip="Quick-Service-Artikel verwenden immer einen QR-Code" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Einkaufspreis (€)" Binding="{Binding Ek, UpdateSourceTrigger=PropertyChanged}" Width="110"
+                                                        ElementStyle="{StaticResource CenteredCellText}"
+                                                        EditingElementStyle="{StaticResource CenteredCellEditor}" />
+                                    <DataGridTextColumn Header="Kassenpreis (€)" Binding="{Binding Price, UpdateSourceTrigger=PropertyChanged}" Width="110"
+                                                        ElementStyle="{StaticResource CenteredCellText}"
+                                                        EditingElementStyle="{StaticResource CenteredCellEditor}" />
+                                    <DataGridTextColumn Header="Verkaufspreis (€)" Binding="{Binding SalesPrice, UpdateSourceTrigger=PropertyChanged}" Width="120"
+                                                        ElementStyle="{StaticResource CenteredCellText}"
+                                                        EditingElementStyle="{StaticResource CenteredCellEditor}" />
+                                    <DataGridTextColumn Header="Empfohlen (€)" Binding="{Binding RecommendedPrice, UpdateSourceTrigger=PropertyChanged}" Width="110"
+                                                        ElementStyle="{StaticResource CenteredCellText}"
+                                                        EditingElementStyle="{StaticResource CenteredCellEditor}" />
+                                    <DataGridTemplateColumn Header="Quick Service" Width="110">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding QuickService, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center"
+                                                          Checked="QuickServiceCheckBox_Changed"
+                                                          Unchecked="QuickServiceCheckBox_Changed"
+                                                          ToolTip="Quick-Service-Artikel verwenden einen QR-Code" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </Border>
+                </TabItem>
+                <TabItem Header="Mitarbeiter">
+                    <Border Background="White" BorderBrush="#D8E0E8" BorderThickness="1"
+                            CornerRadius="8" Padding="18" Margin="0">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
+                                <TextBlock Text="Mitarbeiter" FontSize="22" FontWeight="SemiBold" Foreground="#172B42" />
+                                <TextBlock Text="Mitarbeiterkarten und Anmeldecodes nach Filiale verwalten."
+                                           Foreground="#657586" Margin="0,4,0,14" />
+                                <DockPanel>
+                                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                                        <Button Content="Mitarbeiter hinzufügen" Click="AddEmployee_Click" />
+                                        <Button Content="Ausgewählten löschen" Click="DeleteEmployee_Click" Margin="0" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="EmployeePageBox" Width="300" HorizontalAlignment="Left"
+                                              VerticalContentAlignment="Center"
+                                              ItemsSource="{Binding EmployeePageNames}"
+                                              SelectionChanged="EmployeePageBox_SelectionChanged" />
+                                </DockPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                    <Button Content="Neue Filiale" Click="AddEmployeePage_Click" />
+                                    <Button Content="Filiale umbenennen" Click="RenameEmployeePage_Click" />
+                                    <Button Content="Filiale löschen" Click="DeleteEmployeePage_Click" Margin="0" />
+                                </StackPanel>
+                            </StackPanel>
+                            <DataGrid x:Name="EmployeeGrid" AutoGenerateColumns="False" CanUserAddRows="False"
+                                      CanUserDeleteRows="False" IsReadOnly="False" SelectionMode="Single"
+                                      HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                                      AlternatingRowBackground="#F7F9FB" RowHeight="38"
+                                      CellEditEnding="EmployeeGrid_CellEditEnding">
+                                <DataGrid.CellStyle>
+                                    <Style TargetType="DataGridCell"
+                                           BasedOn="{StaticResource {x:Type DataGridCell}}">
+                                        <Setter Property="VerticalContentAlignment" Value="Center" />
+                                    </Style>
+                                </DataGrid.CellStyle>
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Name" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="2*" />
+                                    <DataGridTextColumn Header="Mitarbeiternummer" Binding="{Binding Number, UpdateSourceTrigger=PropertyChanged}" Width="*" />
+                                    <DataGridTextColumn Header="QR-/Anmeldecode" Binding="{Binding Code, UpdateSourceTrigger=PropertyChanged}" Width="*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </Border>
+                </TabItem>
+                </TabControl>
+                <GridSplitter x:Name="PreviewSplitter" Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
+                              Background="#D8E0E8" ShowsPreview="True" />
+                <Border x:Name="PreviewPanel" Grid.Column="2" Background="#E8EEF4" CornerRadius="8"
+                        BorderBrush="#D8E0E8" BorderThickness="1" Padding="12" Margin="6,6,0,0">
+                    <DockPanel>
+                        <Grid DockPanel.Dock="Top" Margin="2,0,2,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Druckvorschau" FontSize="18" FontWeight="SemiBold"
+                                           Foreground="#172B42" />
+                                <TextBlock x:Name="PreviewDescription" Text="A4 · tatsächliches Drucklayout"
+                                           Foreground="#657586" Margin="0,3,0,0" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Ausblenden" Click="TogglePreview_Click" Margin="8,0,0,0" />
+                        </Grid>
+                        <DocumentViewer x:Name="PrintPreviewViewer" Background="#E8EEF4"
+                                        Loaded="PrintPreviewViewer_Loaded"
+                                        PreviewMouseWheel="PrintPreviewViewer_PreviewMouseWheel" />
+                    </DockPanel>
+                </Border>
+            </Grid>
+
+            <Border Grid.Row="2" Background="#E8EEF4" CornerRadius="6" Padding="12,8" Margin="0,12,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Gespeichert auf diesem Computer" Foreground="#43576A" />
+                    <TextBlock x:Name="DatabasePathText" Grid.Column="1" Foreground="#657586"
+                               Margin="14,0" TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="AppVersionText" Grid.Column="2" Foreground="#657586" />
+                </Grid>
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>

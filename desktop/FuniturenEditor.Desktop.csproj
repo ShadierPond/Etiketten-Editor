@@ -1,0 +1,48 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Configurations>Debug;Release;InternalDebug</Configurations>
+    <Version>1.0.14</Version>
+    <Company>Tariq Alsalem</Company>
+    <Authors>Tariq Alsalem</Authors>
+    <Product>Furnituren Editor</Product>
+    <ApplicationIcon>assets\FuniturenEditor.ico</ApplicationIcon>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'InternalDebug'">
+    <DefineConstants>$(DefineConstants);INTERNAL_DIAGNOSTICS</DefineConstants>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>portable</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\InternalDebug\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
+    <PackageReference Include="PdfSharp" Version="6.2.0" />
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+    <PackageReference Include="SharpVectors.Wpf" Version="1.8.6" />
+    <PackageReference Include="ZXing.Net" Version="0.16.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="FuniturenEditor.WinUI\**\*.cs" />
+    <Page Remove="FuniturenEditor.WinUI\**\*.xaml" />
+    <Resource Include="assets\FuniturenEditor.ico" />
+    <Resource Include="..\Icons\barcode-scan-icon.svg" Link="assets\icons\barcode-scan-icon.svg" />
+    <Resource Include="..\Icons\download-bold-arrow-icon.svg" Link="assets\icons\download-bold-arrow-icon.svg" />
+    <Resource Include="..\Icons\find-icon.svg" Link="assets\icons\find-icon.svg" />
+    <Resource Include="..\Icons\folder-delete-icon.svg" Link="assets\icons\folder-delete-icon.svg" />
+    <Resource Include="..\Icons\folder-plus-icon.svg" Link="assets\icons\folder-plus-icon.svg" />
+    <Resource Include="..\Icons\folder-rename-icon.svg" Link="assets\icons\folder-rename-icon.svg" />
+    <Resource Include="..\Icons\input-icon.svg" Link="assets\icons\input-icon.svg" />
+    <Resource Include="..\Icons\pdf-icon.svg" Link="assets\icons\pdf-icon.svg" />
+    <Resource Include="..\Icons\print-icon.svg" Link="assets\icons\print-icon.svg" />
+  </ItemGroup>
+
+</Project>

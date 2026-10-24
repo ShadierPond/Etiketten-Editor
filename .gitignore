@@ -2,3 +2,8 @@
 **/obj/
 *.user
 *.suo
+server/*.db*
+server/publish/
+desktop/*.db*
+desktop/publish/
+desktop/installer-output/
