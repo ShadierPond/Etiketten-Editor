@@ -669,7 +669,9 @@ public static class PrintService
     }
 
     private static string GetFieldText(CatalogItem item, PrintElementLayout field, FurniturePrintLayout layout) =>
-        field.Kind == "Price"
+        field.Source == "StaticText"
+            ? field.StaticText.Trim()
+            : field.Kind == "Price"
             ? FormatPrice(GetSourceValue(item, field.Source), field.Source == "Price" ? item.SalesPrice : null)
             : field.Source switch
         {

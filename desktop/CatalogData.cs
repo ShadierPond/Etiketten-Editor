@@ -288,6 +288,7 @@ public sealed class PrintElementLayout
     public string Name { get; set; } = "Feld";
     public string Kind { get; set; } = "Text";
     public string Source { get; set; } = "Title";
+    public string StaticText { get; set; } = "";
     public double X { get; set; }
     public double Y { get; set; }
     public double Width { get; set; } = 1;
@@ -303,6 +304,7 @@ public sealed class PrintElementLayout
         Name = Name,
         Kind = Kind,
         Source = Source,
+        StaticText = StaticText,
         X = X,
         Y = Y,
         Width = Width,
@@ -332,6 +334,7 @@ public sealed class PrintElementLayout
             _ => "Text"
         };
         Source = string.IsNullOrWhiteSpace(Source) ? "Title" : Source.Trim();
+        StaticText ??= "";
         X = Math.Clamp(double.IsFinite(X) ? X : 0, 0, cellWidth);
         Y = Math.Clamp(double.IsFinite(Y) ? Y : 0, 0, cellHeight);
         Width = Math.Clamp(double.IsFinite(Width) ? Width : 1, 0, cellWidth - X);

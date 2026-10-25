@@ -19,6 +19,8 @@ public sealed class FurnitureLayoutWindow : Window
     private readonly ComboBox orientationSelector = new();
     private readonly ComboBox kindSelector = new();
     private readonly ComboBox sourceSelector = new();
+    private readonly TextBox staticTextBox = new();
+    private readonly StackPanel staticTextPanel = new();
     private readonly TextBox horizontalGapBox = new();
     private readonly TextBox verticalGapBox = new();
     private readonly TextBox columnsBox = new();
@@ -202,23 +204,22 @@ public sealed class FurnitureLayoutWindow : Window
         form.Children.Add(kindSelector);
         form.Children.Add(new TextBlock
         {
-            Text = "Datenquelle des Feldes",
+            Text = "Inhalt des Feldes",
             Foreground = new SolidColorBrush(Color.FromRgb(67, 87, 106)),
             Margin = new Thickness(0, 4, 0, 0)
         });
-        sourceSelector.ItemsSource = new[]
-        {
-            new LayoutChoice("Beschreibung", "Title"),
-            new LayoutChoice("BECO", "Beco"),
-            new LayoutChoice("Referenznummer", "Ref"),
-            new LayoutChoice("Kassenpreis", "Price"),
-            new LayoutChoice("Verkaufspreis", "SalesPrice"),
-            new LayoutChoice("Einkaufspreis", "Ek"),
-            new LayoutChoice("Empfohlener Preis", "RecommendedPrice")
-        };
         sourceSelector.DisplayMemberPath = nameof(LayoutChoice.Name);
         sourceSelector.SelectedValuePath = nameof(LayoutChoice.Key);
         form.Children.Add(sourceSelector);
+        staticTextPanel.Margin = new Thickness(0, 4, 0, 6);
+        staticTextPanel.Children.Add(new TextBlock
+        {
+            Text = "Fester Text",
+            Foreground = new SolidColorBrush(Color.FromRgb(67, 87, 106))
+        });
+        staticTextPanel.Children.Add(staticTextBox);
+        staticTextPanel.Visibility = Visibility.Collapsed;
+        form.Children.Add(staticTextPanel);
 
         var positionGrid = new Grid();
         positionGrid.ColumnDefinitions.Add(new ColumnDefinition());
@@ -301,6 +302,7 @@ public sealed class FurnitureLayoutWindow : Window
         fieldNameBox.TextChanged += FieldName_Changed;
         kindSelector.SelectionChanged += ElementSettings_Changed;
         sourceSelector.SelectionChanged += ElementSettings_Changed;
+        staticTextBox.TextChanged += StaticText_Changed;
         xBox.TextChanged += Element_Changed;
         yBox.TextChanged += Element_Changed;
         widthBox.TextChanged += Element_Changed;
@@ -363,10 +365,27 @@ public sealed class FurnitureLayoutWindow : Window
     {
         if (isUpdating || currentElement is null)
             return;
-        currentElement.Kind = kindSelector.SelectedValue as string ?? currentElement.Kind;
+        if (ReferenceEquals(sender, kindSelector))
+        {
+            currentElement.Kind = kindSelector.SelectedValue as string ?? currentElement.Kind;
+            UpdateSourceOptions();
+        }
         if (currentElement.Kind is not ("Photo" or "Qr" or "Barcode"))
             currentElement.Source = sourceSelector.SelectedValue as string ?? currentElement.Source;
+        else
+            currentElement.Source = "Configured";
         sourceSelector.IsEnabled = currentElement.Kind is not ("Photo" or "Qr" or "Barcode");
+        staticTextPanel.Visibility = currentElement.Source == "StaticText"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        RefreshPreview();
+    }
+
+    private void StaticText_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (isUpdating || currentElement is null)
+            return;
+        currentElement.StaticText = staticTextBox.Text;
         RefreshPreview();
     }
 
@@ -596,6 +615,7 @@ public sealed class FurnitureLayoutWindow : Window
         element.AutoShrinkText = autoShrinkTextCheckBox.IsChecked == true;
         if (!string.IsNullOrWhiteSpace(fieldNameBox.Text))
             element.Name = fieldNameBox.Text.Trim();
+        element.StaticText = staticTextBox.Text;
     }
 
     private void LoadFields()
@@ -632,8 +652,13 @@ public sealed class FurnitureLayoutWindow : Window
         rotationBox.Text = item is null ? "" : Format(item.RotationDegrees);
         fieldNameBox.Text = item?.Name ?? "";
         kindSelector.SelectedValue = item?.Kind;
+        UpdateSourceOptions();
         sourceSelector.SelectedValue = item?.Source;
         sourceSelector.IsEnabled = item?.Kind is not ("Photo" or "Qr" or "Barcode");
+        staticTextBox.Text = item?.StaticText ?? "";
+        staticTextPanel.Visibility = item?.Source == "StaticText"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         boldCheckBox.IsChecked = item?.Bold == true;
         autoShrinkTextCheckBox.Visibility = item?.Kind == "Text" && item.Source == "Title"
             ? Visibility.Visible
@@ -644,6 +669,32 @@ public sealed class FurnitureLayoutWindow : Window
             : Visibility.Collapsed;
         missingBecoTextBox.Text = draft.MissingBecoText;
         isUpdating = false;
+    }
+
+    private void UpdateSourceOptions()
+    {
+        var kind = kindSelector.SelectedValue as string;
+        var options = kind switch
+        {
+            "Price" => new[]
+            {
+                new LayoutChoice("Kassenpreis", "Price"),
+                new LayoutChoice("Verkaufspreis", "SalesPrice"),
+                new LayoutChoice("Einkaufspreis", "Ek"),
+                new LayoutChoice("Empfohlener Preis", "RecommendedPrice")
+            },
+            "Text" => new[]
+            {
+                new LayoutChoice("Beschreibung", "Title"),
+                new LayoutChoice("BECO", "Beco"),
+                new LayoutChoice("Referenznummer", "Ref"),
+                new LayoutChoice("Fester Text", "StaticText")
+            },
+            _ => new[] { new LayoutChoice("Über QR-/Barcode-Einstellungen", "Configured") }
+        };
+        sourceSelector.ItemsSource = options;
+        if (kind is "Photo" or "Qr" or "Barcode")
+            sourceSelector.SelectedValue = "Configured";
     }
 
     private PrintElementLayout? SelectedElement()
