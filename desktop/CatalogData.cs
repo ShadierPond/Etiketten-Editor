@@ -5,6 +5,7 @@ namespace FuniturenEditor.Desktop;
 
 public sealed class CatalogData
 {
+    public int SchemaVersion { get; set; } = 2;
     public List<CatalogPage> Pages { get; set; } = [];
     public Dictionary<string, string> Library { get; set; } = [];
     public List<EmployeePage> EmployeePages { get; set; } = [];
@@ -27,6 +28,7 @@ public sealed class CatalogData
 
     public void Normalize()
     {
+        SchemaVersion = Math.Max(SchemaVersion, 2);
         Pages ??= [];
         EmployeePages ??= [];
         FurniturePrintLayout ??= new FurniturePrintLayout();

@@ -15,6 +15,7 @@ public sealed class FurnitureLayoutWindow : Window
     private readonly PhotoLibrary photoLibrary;
     private readonly FurniturePrintLayout draft;
     private readonly ComboBox elementSelector = new();
+    private readonly TextBox fieldNameBox = new();
     private readonly ComboBox orientationSelector = new();
     private readonly ComboBox kindSelector = new();
     private readonly ComboBox sourceSelector = new();
@@ -176,9 +177,47 @@ public sealed class FurnitureLayoutWindow : Window
         elementSelector.DisplayMemberPath = nameof(LayoutChoice.Name);
         elementSelector.SelectedValuePath = nameof(LayoutChoice.Key);
         form.Children.Add(elementSelector);
-        kindSelector.ItemsSource = new[] { "Text", "Photo", "Qr", "Barcode", "Price" };
-        sourceSelector.ItemsSource = new[] { "Title", "Beco", "Ref", "Price", "SalesPrice", "Ek", "RecommendedPrice" };
+        form.Children.Add(new TextBlock
+        {
+            Text = "Feldname",
+            Foreground = new SolidColorBrush(Color.FromRgb(67, 87, 106))
+        });
+        fieldNameBox.Margin = new Thickness(0, 2, 0, 6);
+        form.Children.Add(fieldNameBox);
+        form.Children.Add(new TextBlock
+        {
+            Text = "Feldeigenschaft",
+            Foreground = new SolidColorBrush(Color.FromRgb(67, 87, 106))
+        });
+        kindSelector.ItemsSource = new[]
+        {
+            new LayoutChoice("Text", "Text"),
+            new LayoutChoice("Preis", "Price"),
+            new LayoutChoice("Foto", "Photo"),
+            new LayoutChoice("QR-Code", "Qr"),
+            new LayoutChoice("Barcode", "Barcode")
+        };
+        kindSelector.DisplayMemberPath = nameof(LayoutChoice.Name);
+        kindSelector.SelectedValuePath = nameof(LayoutChoice.Key);
         form.Children.Add(kindSelector);
+        form.Children.Add(new TextBlock
+        {
+            Text = "Datenquelle des Feldes",
+            Foreground = new SolidColorBrush(Color.FromRgb(67, 87, 106)),
+            Margin = new Thickness(0, 4, 0, 0)
+        });
+        sourceSelector.ItemsSource = new[]
+        {
+            new LayoutChoice("Beschreibung", "Title"),
+            new LayoutChoice("BECO", "Beco"),
+            new LayoutChoice("Referenznummer", "Ref"),
+            new LayoutChoice("Kassenpreis", "Price"),
+            new LayoutChoice("Verkaufspreis", "SalesPrice"),
+            new LayoutChoice("Einkaufspreis", "Ek"),
+            new LayoutChoice("Empfohlener Preis", "RecommendedPrice")
+        };
+        sourceSelector.DisplayMemberPath = nameof(LayoutChoice.Name);
+        sourceSelector.SelectedValuePath = nameof(LayoutChoice.Key);
         form.Children.Add(sourceSelector);
 
         var positionGrid = new Grid();
@@ -259,6 +298,7 @@ public sealed class FurnitureLayoutWindow : Window
         columnsBox.TextChanged += LayoutSettings_Changed;
         tileCountBox.TextChanged += LayoutSettings_Changed;
         elementSelector.SelectionChanged += ElementSelector_SelectionChanged;
+        fieldNameBox.TextChanged += FieldName_Changed;
         kindSelector.SelectionChanged += ElementSettings_Changed;
         sourceSelector.SelectionChanged += ElementSettings_Changed;
         xBox.TextChanged += Element_Changed;
@@ -323,8 +363,21 @@ public sealed class FurnitureLayoutWindow : Window
     {
         if (isUpdating || currentElement is null)
             return;
-        currentElement.Kind = kindSelector.SelectedItem as string ?? currentElement.Kind;
-        currentElement.Source = sourceSelector.SelectedItem as string ?? currentElement.Source;
+        currentElement.Kind = kindSelector.SelectedValue as string ?? currentElement.Kind;
+        if (currentElement.Kind is not ("Photo" or "Qr" or "Barcode"))
+            currentElement.Source = sourceSelector.SelectedValue as string ?? currentElement.Source;
+        sourceSelector.IsEnabled = currentElement.Kind is not ("Photo" or "Qr" or "Barcode");
+        RefreshPreview();
+    }
+
+    private void FieldName_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (isUpdating || currentElement is null)
+            return;
+        var name = fieldNameBox.Text.Trim();
+        if (name.Length > 0)
+            currentElement.Name = name;
+        RefreshElementSelector(currentElement);
         RefreshPreview();
     }
 
@@ -541,21 +594,8 @@ public sealed class FurnitureLayoutWindow : Window
         element.RotationDegrees = Math.Clamp(rotation, -180, 180);
         element.Bold = boldCheckBox.IsChecked == true;
         element.AutoShrinkText = autoShrinkTextCheckBox.IsChecked == true;
-        element.Name = element.Kind switch
-        {
-            "Photo" => "Foto",
-            "Qr" => "QR-Code",
-            "Barcode" => "Barcode",
-            "Price" => "Preis",
-            _ => element.Source switch
-            {
-                "Title" => "Beschreibung",
-                "Beco" => "BECO",
-                "Ref" => "Referenznummer",
-                "Ek" => "EK",
-                _ => "Textfeld"
-            }
-        };
+        if (!string.IsNullOrWhiteSpace(fieldNameBox.Text))
+            element.Name = fieldNameBox.Text.Trim();
     }
 
     private void LoadFields()
@@ -590,8 +630,10 @@ public sealed class FurnitureLayoutWindow : Window
         heightBox.Text = item is null ? "" : Format(item.Height);
         fontSizeBox.Text = item is null ? "" : Format(item.FontSize);
         rotationBox.Text = item is null ? "" : Format(item.RotationDegrees);
-        kindSelector.SelectedItem = item?.Kind;
-        sourceSelector.SelectedItem = item?.Source;
+        fieldNameBox.Text = item?.Name ?? "";
+        kindSelector.SelectedValue = item?.Kind;
+        sourceSelector.SelectedValue = item?.Source;
+        sourceSelector.IsEnabled = item?.Kind is not ("Photo" or "Qr" or "Barcode");
         boldCheckBox.IsChecked = item?.Bold == true;
         autoShrinkTextCheckBox.Visibility = item?.Kind == "Text" && item.Source == "Title"
             ? Visibility.Visible
