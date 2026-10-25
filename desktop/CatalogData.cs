@@ -29,6 +29,8 @@ public sealed class CatalogData
     {
         Pages ??= [];
         EmployeePages ??= [];
+        FurniturePrintLayout ??= new FurniturePrintLayout();
+        FurniturePrintLayout.Normalize();
         for (var index = Pages.Count - 1; index >= 0; index--)
         {
             if (Pages[index] is null)
@@ -45,10 +47,10 @@ public sealed class CatalogData
                 if (page.Items[index] is null)
                     page.Items.RemoveAt(index);
             }
-            while (page.Items.Count < 15)
+            while (page.Items.Count < FurniturePrintLayout.TileCount)
                 page.Items.Add(new CatalogItem());
-            if (page.Items.Count > 15)
-                page.Items = page.Items.Take(15).ToList();
+            if (page.Items.Count > FurniturePrintLayout.TileCount)
+                page.Items = page.Items.Take(FurniturePrintLayout.TileCount).ToList();
             foreach (var item in page.Items)
             {
                 item.Title ??= "";
@@ -90,8 +92,6 @@ public sealed class CatalogData
 
         Library ??= [];
         EmployeeLayout ??= new EmployeeLayout();
-        FurniturePrintLayout ??= new FurniturePrintLayout();
-        FurniturePrintLayout.Normalize();
     }
 }
 
@@ -151,7 +151,14 @@ public sealed class FurniturePrintLayout
 {
     public double CellWidthCm { get; set; } = 3.5;
     public double CellHeightCm { get; set; } = 3.5;
+    public string Orientation { get; set; } = "Landscape";
+    public double HorizontalGapCm { get; set; } = 0.2;
+    public double VerticalGapCm { get; set; } = 0.2;
+    public int Columns { get; set; } = 5;
+    public int TileCount { get; set; } = 15;
     public string MissingBecoText { get; set; } = "OROVIVO";
+    public QrCodeSettings QrCode { get; set; } = new();
+    public List<PrintElementLayout> Fields { get; set; } = [];
     public PrintElementLayout Photo { get; set; } = new() { X = 0.15, Y = 0.15, Width = 0.8, Height = 0.8, FontSize = 8 };
     public PrintElementLayout Qr { get; set; } = new() { X = 1.1, Y = 0.15, Width = 1.45, Height = 1.45, FontSize = 8 };
     public PrintElementLayout Title { get; set; } = new() { X = 0.15, Y = 1.7, Width = 3.2, Height = 0.55, FontSize = 8, Bold = true, AutoShrinkText = true };
@@ -164,7 +171,16 @@ public sealed class FurniturePrintLayout
     {
         CellWidthCm = Math.Clamp(double.IsFinite(CellWidthCm) ? CellWidthCm : 3.5, 2, 5);
         CellHeightCm = Math.Clamp(double.IsFinite(CellHeightCm) ? CellHeightCm : 3.5, 2, 5);
+        Orientation = string.Equals(Orientation, "Portrait", StringComparison.OrdinalIgnoreCase)
+            ? "Portrait"
+            : "Landscape";
+        HorizontalGapCm = Math.Clamp(double.IsFinite(HorizontalGapCm) ? HorizontalGapCm : 0.2, 0, 2);
+        VerticalGapCm = Math.Clamp(double.IsFinite(VerticalGapCm) ? VerticalGapCm : 0.2, 0, 2);
+        Columns = Math.Clamp(Columns, 1, 12);
+        TileCount = Math.Clamp(TileCount, 1, 120);
         MissingBecoText = string.IsNullOrWhiteSpace(MissingBecoText) ? "OROVIVO" : MissingBecoText.Trim();
+        QrCode ??= new QrCodeSettings();
+        QrCode.Normalize();
         Photo ??= new PrintElementLayout();
         Qr ??= new PrintElementLayout();
         Title ??= new PrintElementLayout();
@@ -172,18 +188,38 @@ public sealed class FurniturePrintLayout
         Ref ??= new PrintElementLayout();
         Price ??= new PrintElementLayout();
         Ek ??= new PrintElementLayout();
-        foreach (var element in Elements)
+        if (Fields is null || Fields.Count == 0)
+        {
+            Fields =
+            [
+                Photo.CopyWith("Foto", "Photo", "Photo"),
+                Qr.CopyWith("QR-Code / Barcode", "Qr", "Qr"),
+                Title.CopyWith("Beschreibung", "Text", "Title"),
+                Beco.CopyWith("BECO", "Text", "Beco"),
+                Ref.CopyWith("Referenznummer", "Text", "Ref"),
+                Price.CopyWith("VK-Preis", "Price", "Price"),
+                Ek.CopyWith("EK", "Price", "Ek")
+            ];
+        }
+        foreach (var element in Fields)
             element.Normalize(CellWidthCm, CellHeightCm);
     }
 
     [JsonIgnore]
-    public IReadOnlyList<PrintElementLayout> Elements => [Photo, Qr, Title, Beco, Ref, Price, Ek];
+    public IReadOnlyList<PrintElementLayout> Elements => Fields;
 
     public FurniturePrintLayout Copy() => new()
     {
         CellWidthCm = CellWidthCm,
         CellHeightCm = CellHeightCm,
+        Orientation = Orientation,
+        HorizontalGapCm = HorizontalGapCm,
+        VerticalGapCm = VerticalGapCm,
+        Columns = Columns,
+        TileCount = TileCount,
         MissingBecoText = MissingBecoText,
+        QrCode = QrCode.Copy(),
+        Fields = Fields.Select(field => field.Copy()).ToList(),
         Photo = Photo.Copy(),
         Qr = Qr.Copy(),
         Title = Title.Copy(),
@@ -197,7 +233,14 @@ public sealed class FurniturePrintLayout
     {
         CellWidthCm = other.CellWidthCm;
         CellHeightCm = other.CellHeightCm;
+        Orientation = other.Orientation;
+        HorizontalGapCm = other.HorizontalGapCm;
+        VerticalGapCm = other.VerticalGapCm;
+        Columns = other.Columns;
+        TileCount = other.TileCount;
         MissingBecoText = other.MissingBecoText;
+        QrCode = other.QrCode.Copy();
+        Fields = other.Fields.Select(field => field.Copy()).ToList();
         Photo = other.Photo.Copy();
         Qr = other.Qr.Copy();
         Title = other.Title.Copy();
@@ -207,10 +250,42 @@ public sealed class FurniturePrintLayout
         Ek = other.Ek.Copy();
         Normalize();
     }
+
+    public sealed class QrCodeSettings
+    {
+        public bool Enabled { get; set; } = true;
+        public string SourceField { get; set; } = "Ref";
+        public string FallbackField { get; set; } = "Beco";
+        public bool UseFallback { get; set; } = true;
+        public string Prefix { get; set; } = "";
+        public string Suffix { get; set; } = "";
+
+        public void Normalize()
+        {
+            SourceField = string.IsNullOrWhiteSpace(SourceField) ? "Ref" : SourceField.Trim();
+            FallbackField = string.IsNullOrWhiteSpace(FallbackField) ? "Beco" : FallbackField.Trim();
+            Prefix ??= "";
+            Suffix ??= "";
+        }
+
+        public QrCodeSettings Copy() => new()
+        {
+            Enabled = Enabled,
+            SourceField = SourceField,
+            FallbackField = FallbackField,
+            UseFallback = UseFallback,
+            Prefix = Prefix,
+            Suffix = Suffix
+        };
+    }
 }
 
 public sealed class PrintElementLayout
 {
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = "Feld";
+    public string Kind { get; set; } = "Text";
+    public string Source { get; set; } = "Title";
     public double X { get; set; }
     public double Y { get; set; }
     public double Width { get; set; } = 1;
@@ -222,6 +297,10 @@ public sealed class PrintElementLayout
 
     public PrintElementLayout Copy() => new()
     {
+        Id = Id,
+        Name = Name,
+        Kind = Kind,
+        Source = Source,
         X = X,
         Y = Y,
         Width = Width,
@@ -232,8 +311,25 @@ public sealed class PrintElementLayout
         AutoShrinkText = AutoShrinkText
     };
 
+    public PrintElementLayout CopyWith(string name, string kind, string source)
+    {
+        var copy = Copy();
+        copy.Name = name;
+        copy.Kind = kind;
+        copy.Source = source;
+        return copy;
+    }
+
     public void Normalize(double cellWidth, double cellHeight)
     {
+        Id = string.IsNullOrWhiteSpace(Id) ? Guid.NewGuid().ToString("N") : Id;
+        Name = string.IsNullOrWhiteSpace(Name) ? "Feld" : Name.Trim();
+        Kind = Kind switch
+        {
+            "Photo" or "Qr" or "Barcode" or "Price" => Kind,
+            _ => "Text"
+        };
+        Source = string.IsNullOrWhiteSpace(Source) ? "Title" : Source.Trim();
         X = Math.Clamp(double.IsFinite(X) ? X : 0, 0, cellWidth);
         Y = Math.Clamp(double.IsFinite(Y) ? Y : 0, 0, cellHeight);
         Width = Math.Clamp(double.IsFinite(Width) ? Width : 1, 0, cellWidth - X);

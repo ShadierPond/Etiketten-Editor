@@ -118,7 +118,8 @@ public partial class MainWindow : Window
             .Where(row => Matches(query, CurrentFurniturePage.Name, row.Title, row.Beco, row.Ref,
                 row.Price, row.Ek, row.SalesPrice, row.RecommendedPrice))
             .ToList();
-        FurnitureCountText.Text = $"  15 Etiketten · {CurrentFurniturePage.Items.Count(item => !string.IsNullOrWhiteSpace(item.Title) || !string.IsNullOrWhiteSpace(item.Beco) || !string.IsNullOrWhiteSpace(item.Ref))} gepflegt";
+        var tileCount = data.FurniturePrintLayout.TileCount;
+        FurnitureCountText.Text = $"  {tileCount} Etiketten · {CurrentFurniturePage.Items.Count(item => !string.IsNullOrWhiteSpace(item.Title) || !string.IsNullOrWhiteSpace(item.Beco) || !string.IsNullOrWhiteSpace(item.Ref))} gepflegt";
     }
 
     private void RefreshEmployeeRows()
@@ -338,12 +339,12 @@ public partial class MainWindow : Window
             return;
         }
         var target = TextPromptWindow.Show(this, "Etikett verschieben",
-            "Neue Position (1–15)", (row.ItemIndex + 1).ToString());
+            $"Neue Position (1–{data.FurniturePrintLayout.TileCount})", (row.ItemIndex + 1).ToString());
         if (target is null)
             return;
-        if (!int.TryParse(target, out var targetPosition) || targetPosition is < 1 or > 15)
+        if (!int.TryParse(target, out var targetPosition) || targetPosition is < 1 || targetPosition > data.FurniturePrintLayout.TileCount)
         {
-            MessageBox.Show("Geben Sie eine Position von 1 bis 15 ein.", "Etikett verschieben",
+            MessageBox.Show($"Geben Sie eine Position von 1 bis {data.FurniturePrintLayout.TileCount} ein.", "Etikett verschieben",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -773,7 +774,7 @@ public partial class MainWindow : Window
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Furnituren-Katalog importieren",
+            Title = "Etiketten-Katalog importieren",
             Filter = "JSON-Dateien (*.json)|*.json|Alle Dateien (*.*)|*.*"
         };
         if (dialog.ShowDialog(this) != true)
@@ -799,7 +800,7 @@ public partial class MainWindow : Window
 
         var dialog = new OpenFileDialog
         {
-            Title = "Furnituren-Katalog importieren",
+            Title = "Etiketten-Katalog importieren",
             Filter = "JSON-Dateien (*.json)|*.json|Alle Dateien (*.*)|*.*"
         };
         if (dialog.ShowDialog(this) == true)
@@ -813,7 +814,7 @@ public partial class MainWindow : Window
             var imported = JsonSerializer.Deserialize<CatalogData>(File.ReadAllText(fileName), JsonOptions)
                 ?? throw new InvalidDataException("Die Datei enthält keinen gültigen Katalog.");
             if (imported.Pages is null || imported.Pages.Count == 0)
-                throw new InvalidDataException("Die Datei enthält keine Furnituren-Kategorien.");
+                throw new InvalidDataException("Die Datei enthält keine Etiketten-Kategorien.");
             if (imported.AdditionalData?.TryGetValue("employees", out var legacyEmployees) == true &&
                 legacyEmployees.ValueKind == JsonValueKind.Array)
             {
@@ -855,7 +856,7 @@ public partial class MainWindow : Window
     {
         var dialog = new SaveFileDialog
         {
-            Title = "Furnituren-Katalog exportieren",
+            Title = "Etiketten-Katalog exportieren",
             Filter = "JSON-Dateien (*.json)|*.json",
             FileName = "furnituren-daten.json",
             AddExtension = true
@@ -893,7 +894,7 @@ public partial class MainWindow : Window
             var result = MessageBox.Show(
                 $"Version {release.Version} ist verfügbar.\n\n" +
                 "Möchtest du das Update jetzt herunterladen und zur Installation vorbereiten?",
-                "Furnituren Editor – Update verfügbar",
+                "Etiketten Editor – Update verfügbar",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Information);
             if (result == MessageBoxResult.Yes)
@@ -963,7 +964,7 @@ public partial class MainWindow : Window
     }
 
     private void QuickServiceQr_Click(object sender, RoutedEventArgs e) =>
-        PrintService.ExportQuickServiceQrZip(this, data.Pages);
+        PrintService.ExportQuickServiceQrZip(this, data);
 
     private void ChoosePhoto_Click(object sender, RoutedEventArgs e)
     {
@@ -1021,7 +1022,7 @@ public partial class MainWindow : Window
 
         if (EditorTabs.SelectedIndex == 0)
         {
-            PreviewDescription.Text = $"A4 quer · Etiketten · {CurrentFurniturePage.Name}";
+            PreviewDescription.Text = $"A4 {data.FurniturePrintLayout.Orientation.ToLowerInvariant()} · Etiketten · {CurrentFurniturePage.Name}";
             var selectedItem = (FurnitureGrid.SelectedItem as CatalogGridRow)?.Item;
             if (selectedItem is null || !CurrentFurniturePage.Items.Contains(selectedItem))
                 selectedItem = null;

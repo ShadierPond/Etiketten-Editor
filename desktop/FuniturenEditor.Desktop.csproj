@@ -4,10 +4,10 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <Configurations>Debug;Release;InternalDebug</Configurations>
-    <Version>1.0.17</Version>
+    <Version>1.1.0</Version>
     <Company>Tariq Alsalem</Company>
     <Authors>Tariq Alsalem</Authors>
-    <Product>Furnituren Editor</Product>
+    <Product>Etiketten Editor</Product>
     <ApplicationIcon>assets\FuniturenEditor.ico</ApplicationIcon>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

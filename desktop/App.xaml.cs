@@ -22,7 +22,7 @@ public partial class App : Application
             AppDiagnostics.Exception("app.startup", ex);
             MessageBox.Show(
                 $"Die lokale Datenbank konnte nicht geöffnet werden.\n\n{ex.Message}",
-                "Furnituren Editor",
+                "Etiketten Editor",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
             Shutdown(1);

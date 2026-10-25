@@ -24,7 +24,7 @@ public static class PrintService
 
     public static void PrintFurniture(Window owner, CatalogData catalog, IEnumerable<CatalogPage> pages, PhotoLibrary photoLibrary)
     {
-        ShowPrintDialog(owner, CreateFurnitureDocument(catalog, pages, photoLibrary), "Furnituren-Etiketten");
+        ShowPrintDialog(owner, CreateFurnitureDocument(catalog, pages, photoLibrary), "Etiketten");
     }
 
     public static void SaveFurniturePdf(
@@ -43,43 +43,62 @@ public static class PrintService
         Action<CatalogItem>? onPreviewItemClicked = null,
         ICollection<Border>? previewCells = null)
     {
-        var document = CreateDocument(PageOrientation.Landscape);
         var layout = catalog.FurniturePrintLayout;
         layout.Normalize();
+        var orientation = layout.Orientation == "Portrait"
+            ? PageOrientation.Portrait
+            : PageOrientation.Landscape;
+        var document = CreateDocument(orientation);
         foreach (var catalogPage in pages)
         {
-            var page = CreatePage(Mm(297), Mm(210));
-            AddText(page, "Furnituren Editor", Mm(8), Mm(7), 160, 20, 9, Brushes.SlateGray);
-            AddText(page, catalogPage.Name, Mm(110), Mm(7), 340, 20, 12, Brushes.Black, FontWeights.SemiBold);
-            AddText(page, "A4 · 15 Etiketten · 5 × 3", Mm(238), Mm(7), 185, 20, 9, Brushes.SlateGray);
-
-            const int columns = 5;
-            const int rows = 3;
+            var pageWidth = orientation == PageOrientation.Portrait ? Mm(210) : Mm(297);
+            var pageHeight = orientation == PageOrientation.Portrait ? Mm(297) : Mm(210);
             var labelWidth = Cm(layout.CellWidthCm);
             var labelHeight = Cm(layout.CellHeightCm);
-            var totalWidth = labelWidth * columns;
-            var totalHeight = labelHeight * rows;
-            var left = (page.Width - totalWidth) / 2;
-            var top = (page.Height - totalHeight) / 2 + Mm(8);
-            for (var index = 0; index < 15; index++)
+            var horizontalGap = Cm(layout.HorizontalGapCm);
+            var verticalGap = Cm(layout.VerticalGapCm);
+            var maxColumnsOnPage = Math.Max(1,
+                (int)((pageWidth - Mm(16) + horizontalGap) / (labelWidth + horizontalGap)));
+            var columns = Math.Clamp(layout.Columns, 1, Math.Min(layout.TileCount, maxColumnsOnPage));
+            var rowsPerPage = Math.Max(1, (int)((pageHeight - Mm(28)) / (labelHeight + verticalGap)));
+            var capacityPerPage = columns * rowsPerPage;
+            var pageCount = Math.Max(1, (int)Math.Ceiling(layout.TileCount / (double)capacityPerPage));
+            for (var pageIndex = 0; pageIndex < pageCount; pageIndex++)
             {
-                var item = catalogPage.Items[index];
+                var page = CreatePage(pageWidth, pageHeight);
+                AddText(page, "Etiketten Editor", Mm(8), Mm(7), 160, 20, 9, Brushes.SlateGray);
+                AddText(page, catalogPage.Name, pageWidth / 2 - 170, Mm(7), 340, 20, 12, Brushes.Black, FontWeights.SemiBold);
+                AddText(page, $"A4 · {layout.TileCount} Etiketten · {layout.Columns} Spalten" +
+                    (pageCount > 1 ? $" · Seite {pageIndex + 1}/{pageCount}" : ""),
+                    pageWidth - Mm(62), Mm(7), Mm(54), 20, 9, Brushes.SlateGray);
+                var startIndex = pageIndex * capacityPerPage;
+                var itemsOnPage = Math.Min(capacityPerPage, layout.TileCount - startIndex);
+                var rows = (int)Math.Ceiling(itemsOnPage / (double)columns);
+                var totalWidth = labelWidth * columns + horizontalGap * (columns - 1);
+                var totalHeight = labelHeight * rows + verticalGap * (rows - 1);
+                var left = (page.Width - totalWidth) / 2;
+                var top = (page.Height - totalHeight) / 2 + Mm(8);
+                for (var localIndex = 0; localIndex < itemsOnPage; localIndex++)
+                {
+                    var index = startIndex + localIndex;
+                    var item = index < catalogPage.Items.Count ? catalogPage.Items[index] : new CatalogItem();
 #if INTERNAL_DIAGNOSTICS
                 using var cellDiagnostic = AppDiagnostics.Measure(
                     "preview.cell.build",
                     () => $"position={index + 1};quickService={item.QuickService};barcode={item.UseBarcode}");
 #endif
-                var cell = CreateFurnitureCell(
-                    catalog, item, photoLibrary, layout,
-                    ReferenceEquals(item, highlightedItem), onPreviewItemClicked);
-                previewCells?.Add(cell);
-                var column = index % columns;
-                var row = index / columns;
-                FixedPage.SetLeft(cell, left + column * labelWidth);
-                FixedPage.SetTop(cell, top + row * labelHeight);
-                page.Children.Add(cell);
+                    var cell = CreateFurnitureCell(
+                        catalog, item, photoLibrary, layout,
+                        ReferenceEquals(item, highlightedItem), onPreviewItemClicked);
+                    previewCells?.Add(cell);
+                    var column = localIndex % columns;
+                    var row = localIndex / columns;
+                    FixedPage.SetLeft(cell, left + column * (labelWidth + horizontalGap));
+                    FixedPage.SetTop(cell, top + row * (labelHeight + verticalGap));
+                    page.Children.Add(cell);
+                }
+                AddPage(document, page);
             }
-            AddPage(document, page);
         }
         return document;
     }
@@ -132,23 +151,25 @@ public static class PrintService
         return document;
     }
 
-    public static void ExportQuickServiceQrZip(Window owner, IEnumerable<CatalogPage> pages)
+    public static void ExportQuickServiceQrZip(Window owner, CatalogData catalog)
     {
-        var products = pages.SelectMany(page => page.Items)
-            .Where(item => item.QuickService && !string.IsNullOrWhiteSpace(item.Title))
+        var layout = catalog.FurniturePrintLayout;
+        layout.Normalize();
+        var products = catalog.Pages.SelectMany(page => page.Items)
+            .Where(item => !string.IsNullOrWhiteSpace(GetQrContent(item, layout)))
             .ToList();
         if (products.Count == 0)
         {
-            MessageBox.Show(owner, "Es wurden keine Quick-Service-Artikel mit Beschreibung gefunden.",
-                "Quick-Service-QRs", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(owner, "Es wurden keine Artikel mit einem QR-/Barcodewert gefunden.",
+                "QR-/Barcode-Export", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
-            Title = "Quick-Service-QR-Codes speichern",
+            Title = "QR-/Barcode-Codes speichern",
             Filter = "ZIP-Datei (*.zip)|*.zip",
-            FileName = "quick-service-qr-codes.zip",
+            FileName = "etiketten-codes.zip",
             AddExtension = true
         };
         if (dialog.ShowDialog(owner) != true)
@@ -160,20 +181,22 @@ public static class PrintService
             var nameCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in products)
             {
-                var qrContent = GetQrContent(item);
+                var qrContent = GetQrContent(item, layout);
                 var baseName = SafeFileName(qrContent);
                 nameCounts.TryGetValue(baseName, out var count);
                 nameCounts[baseName] = ++count;
                 var entry = archive.CreateEntry($"{baseName}{(count > 1 ? $" ({count})" : "")}.png");
                 using var stream = entry.Open();
-                var image = CreateQrBytes(qrContent);
+                var image = IsBarcodeField(layout)
+                    ? RenderBarcodeBytes(qrContent)
+                    : CreateQrBytes(qrContent);
                 stream.Write(image);
             }
         }
         catch (Exception ex)
         {
             MessageBox.Show(owner, $"Die QR-Codes konnten nicht erstellt werden.\n\n{ex.Message}",
-                "Quick-Service-QRs", MessageBoxButton.OK, MessageBoxImage.Error);
+                "QR-/Barcode-Export", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -362,22 +385,22 @@ public static class PrintService
             Background = Brushes.Transparent
         };
         var photoPath = photoLibrary.GetPhotoPath(catalog, item.Photo);
-        AddFurnitureElement(canvas, layout.Photo, photoPath is null ? null : CreatePhotoImage(photoPath), width, height);
-        var codeContent = GetQrContent(item);
+        var codeContent = GetQrContent(item, layout);
         var codeImage = codeContent.Length == 0
             ? null
-            : item.UseBarcode && !item.QuickService
+            : IsBarcodeField(layout)
                 ? CreateBarcodeImage(codeContent)
                 : CreateQrImage(codeContent);
-        AddFurnitureElement(canvas, layout.Qr, codeImage, width, height);
-        AddFurnitureElement(canvas, layout.Title, item.Title, width, height);
-        AddFurnitureElement(canvas, layout.Beco, DisplayBecoText(item, layout.MissingBecoText), width, height);
-        AddFurnitureElement(canvas, layout.Ref, item.Ref, width, height);
-        var displayPrice = string.IsNullOrWhiteSpace(item.SalesPrice) ? item.Price : item.SalesPrice;
-        AddFurnitureElement(canvas, layout.Price,
-            string.IsNullOrWhiteSpace(displayPrice) ? "" : displayPrice + " €", width, height);
-        AddFurnitureElement(canvas, layout.Ek,
-            string.IsNullOrWhiteSpace(item.Ek) ? "" : "EK " + item.Ek + " €", width, height);
+        foreach (var field in layout.Elements)
+        {
+            object? content = field.Kind switch
+            {
+                "Photo" => photoPath is null ? null : CreatePhotoImage(photoPath),
+                "Qr" or "Barcode" => codeImage,
+                _ => GetFieldText(item, field, layout)
+            };
+            AddFurnitureElement(canvas, field, content, width, height);
+        }
         var border = new Border
         {
             Width = width,
@@ -577,6 +600,30 @@ public static class PrintService
         return new PngByteQRCode(qrData).GetGraphic(8);
     }
 
+    private static byte[] RenderBarcodeBytes(string content)
+    {
+        var writer = new BarcodeWriterPixelData
+        {
+            Format = BarcodeFormat.CODE_128,
+            Options = new EncodingOptions { Width = 960, Height = 240, Margin = 10, PureBarcode = true }
+        };
+        var pixels = writer.Write(content);
+        var bitmap = BitmapSource.Create(
+            pixels.Width,
+            pixels.Height,
+            96,
+            96,
+            PixelFormats.Bgra32,
+            null,
+            pixels.Pixels,
+            pixels.Width * 4);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+        return stream.ToArray();
+    }
+
     private static Image CreateBarcodeImage(string content)
     {
         var writer = new BarcodeWriterPixelData
@@ -608,12 +655,47 @@ public static class PrintService
         };
     }
 
-    private static string GetQrContent(CatalogItem item)
+    private static bool IsBarcodeField(FurniturePrintLayout layout) =>
+        layout.Elements.Any(field => field.Kind == "Barcode");
+
+    private static string GetQrContent(CatalogItem item, FurniturePrintLayout layout)
     {
-        if (!item.QuickService)
-            return item.Ref.Trim();
-        var beco = BecoText(item.Beco);
-        return string.Join(' ', new[] { item.Title.Trim(), beco }.Where(value => value.Length > 0));
+        if (!layout.QrCode.Enabled)
+            return "";
+        var value = GetSourceValue(item, layout.QrCode.SourceField);
+        if (value.Length == 0 && layout.QrCode.UseFallback)
+            value = GetSourceValue(item, layout.QrCode.FallbackField);
+        return value.Length == 0 ? "" : layout.QrCode.Prefix + value + layout.QrCode.Suffix;
+    }
+
+    private static string GetFieldText(CatalogItem item, PrintElementLayout field, FurniturePrintLayout layout) =>
+        field.Kind == "Price"
+            ? FormatPrice(GetSourceValue(item, field.Source), field.Source == "Price" ? item.SalesPrice : null)
+            : field.Source switch
+        {
+            "Beco" => DisplayBecoText(item, layout.MissingBecoText),
+            "Price" => FormatPrice(item.Price, item.SalesPrice),
+            "Ek" => FormatPrice(item.Ek, null, "EK "),
+            _ => GetSourceValue(item, field.Source)
+        };
+
+    private static string GetSourceValue(CatalogItem item, string source) =>
+        source switch
+        {
+            "Title" => item.Title.Trim(),
+            "Beco" => item.Beco.Trim(),
+            "Ref" => item.Ref.Trim(),
+            "Price" => item.Price.Trim(),
+            "SalesPrice" => item.SalesPrice.Trim(),
+            "Ek" => item.Ek.Trim(),
+            "RecommendedPrice" => item.RecommendedPrice.Trim(),
+            _ => ""
+        };
+
+    private static string FormatPrice(string value, string? fallback, string prefix = "")
+    {
+        var selected = string.IsNullOrWhiteSpace(value) ? fallback : value;
+        return string.IsNullOrWhiteSpace(selected) ? "" : prefix + selected.Trim() + " €";
     }
 
     private static string BecoText(string value)

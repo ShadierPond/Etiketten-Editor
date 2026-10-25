@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:svgc="clr-namespace:SharpVectors.Converters;assembly=SharpVectors.Converters.Wpf"
-        Title="Furnituren Editor" Height="820" Width="1500"
+        Title="Etiketten Editor" Height="820" Width="1500"
         MinHeight="600" MinWidth="900" WindowStartupLocation="CenterScreen"
         Background="#F2F5F8">
     <DockPanel>
@@ -22,7 +22,7 @@
                                Stretch="Uniform" />
                     </Border>
                     <StackPanel>
-                        <TextBlock Text="Furnituren Editor" Foreground="White" FontSize="19" FontWeight="SemiBold" />
+                        <TextBlock Text="Etiketten Editor" Foreground="White" FontSize="19" FontWeight="SemiBold" />
                         <TextBlock Text="Lokaler Arbeitsbereich" Foreground="#B8C7D6" FontSize="12" />
                     </StackPanel>
                 </StackPanel>
@@ -83,7 +83,7 @@
                         <StackPanel Orientation="Horizontal">
                             <svgc:SvgViewbox Width="16" Height="16" Margin="0,0,7,0"
                                               Source="/assets/icons/barcode-scan-icon.svg" />
-                            <TextBlock Text="Quick-Service-QRs ZIP" />
+                            <TextBlock Text="QR-/Barcode-ZIP" />
                         </StackPanel>
                     </Button>
                 </StackPanel>
@@ -200,12 +200,12 @@
                             </Setter>
                         </Style>
                     </TabControl.Resources>
-                <TabItem Header="Furnituren">
+                <TabItem Header="Etiketten">
                     <Border Background="White" BorderBrush="#D8E0E8" BorderThickness="1"
                             CornerRadius="8" Padding="18" Margin="0">
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
-                                <TextBlock Text="Furnituren-Katalog" FontSize="22" FontWeight="SemiBold"
+                                <TextBlock Text="Etiketten-Katalog" FontSize="22" FontWeight="SemiBold"
                                            Foreground="#172B42" />
                                 <TextBlock Text="Artikel und Kategorien direkt in der lokalen Datenbank pflegen."
                                            Foreground="#657586" Margin="0,4,0,14" />
@@ -387,7 +387,7 @@
                                                           HorizontalContentAlignment="Center"
                                                           VerticalContentAlignment="Center"
                                                           SelectionChanged="CodeTypeComboBox_SelectionChanged"
-                                                          ToolTip="Quick-Service-Artikel verwenden immer einen QR-Code" />
+                                                          ToolTip="Der QR-/Barcode-Typ wird in der Etikettenvorlage festgelegt." />
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
@@ -403,20 +403,6 @@
                                     <DataGridTextColumn Header="Empfohlen (€)" Binding="{Binding RecommendedPrice, UpdateSourceTrigger=PropertyChanged}" Width="110"
                                                         ElementStyle="{StaticResource CenteredCellText}"
                                                         EditingElementStyle="{StaticResource CenteredCellEditor}" />
-                                    <DataGridTemplateColumn Header="Quick Service" Width="110">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <Grid HorizontalAlignment="Stretch">
-                                                    <CheckBox IsChecked="{Binding QuickService, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                              HorizontalAlignment="Center"
-                                                              VerticalAlignment="Center"
-                                                              Checked="QuickServiceCheckBox_Changed"
-                                                              Unchecked="QuickServiceCheckBox_Changed"
-                                                              ToolTip="Quick-Service-Artikel verwenden einen QR-Code" />
-                                                </Grid>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </DockPanel>

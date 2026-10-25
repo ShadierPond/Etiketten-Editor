@@ -15,6 +15,19 @@ public sealed class FurnitureLayoutWindow : Window
     private readonly PhotoLibrary photoLibrary;
     private readonly FurniturePrintLayout draft;
     private readonly ComboBox elementSelector = new();
+    private readonly ComboBox orientationSelector = new();
+    private readonly ComboBox kindSelector = new();
+    private readonly ComboBox sourceSelector = new();
+    private readonly TextBox horizontalGapBox = new();
+    private readonly TextBox verticalGapBox = new();
+    private readonly TextBox columnsBox = new();
+    private readonly TextBox tileCountBox = new();
+    private readonly ComboBox qrSourceBox = new();
+    private readonly ComboBox qrFallbackBox = new();
+    private readonly TextBox qrPrefixBox = new();
+    private readonly TextBox qrSuffixBox = new();
+    private readonly CheckBox qrEnabledCheckBox = new() { Content = "QR-/Barcode-Erzeugung aktiv" };
+    private readonly CheckBox qrFallbackCheckBox = new() { Content = "Fallback verwenden" };
     private readonly TextBox cellWidthBox = new();
     private readonly TextBox cellHeightBox = new();
     private readonly TextBox xBox = new();
@@ -134,21 +147,39 @@ public sealed class FurnitureLayoutWindow : Window
         AddNumericField(cellSize, "Höhe (cm)", cellHeightBox, 0.1, 2, 0);
         form.Children.Add(cellSize);
 
+        AddSectionHeading(form, "Druckraster");
+        orientationSelector.ItemsSource = new[] { "Landscape", "Portrait" };
+        orientationSelector.Margin = new Thickness(0, 4, 0, 8);
+        form.Children.Add(orientationSelector);
+        var gridSettings = new Grid();
+        gridSettings.ColumnDefinitions.Add(new ColumnDefinition());
+        gridSettings.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+        gridSettings.ColumnDefinitions.Add(new ColumnDefinition());
+        gridSettings.RowDefinitions.Add(new RowDefinition());
+        gridSettings.RowDefinitions.Add(new RowDefinition());
+        AddNumericField(gridSettings, "Horizontaler Abstand (cm)", horizontalGapBox, 0.1, 0, 0);
+        AddNumericField(gridSettings, "Vertikaler Abstand (cm)", verticalGapBox, 0.1, 2, 0);
+        AddNumericField(gridSettings, "Spalten", columnsBox, 1, 0, 1);
+        AddNumericField(gridSettings, "Etiketten je Kategorie", tileCountBox, 1, 2, 1);
+        form.Children.Add(gridSettings);
+
         AddSectionHeading(form, "Element bearbeiten");
-        elementSelector.Margin = new Thickness(0, 4, 0, 10);
-        elementSelector.ItemsSource = new[]
-        {
-            new LayoutChoice("Foto", "Photo"),
-            new LayoutChoice("QR-Code / Barcode", "Qr"),
-            new LayoutChoice("Beschreibung", "Title"),
-            new LayoutChoice("BECO", "Beco"),
-            new LayoutChoice("Referenznummer", "Ref"),
-            new LayoutChoice("VK-Preis", "Price"),
-            new LayoutChoice("EK", "Ek")
-        };
+        var elementButtons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 8) };
+        var addElement = new Button { Content = "Feld hinzufügen", Margin = new Thickness(0, 0, 6, 0) };
+        var removeElement = new Button { Content = "Feld entfernen" };
+        addElement.Click += (_, _) => AddElement();
+        removeElement.Click += (_, _) => RemoveElement();
+        elementButtons.Children.Add(addElement);
+        elementButtons.Children.Add(removeElement);
+        form.Children.Add(elementButtons);
+        elementSelector.Margin = new Thickness(0, 0, 0, 8);
         elementSelector.DisplayMemberPath = nameof(LayoutChoice.Name);
-        elementSelector.SelectedIndex = 0;
+        elementSelector.SelectedValuePath = nameof(LayoutChoice.Key);
         form.Children.Add(elementSelector);
+        kindSelector.ItemsSource = new[] { "Text", "Photo", "Qr", "Barcode", "Price" };
+        sourceSelector.ItemsSource = new[] { "Title", "Beco", "Ref", "Price", "SalesPrice", "Ek", "RecommendedPrice" };
+        form.Children.Add(kindSelector);
+        form.Children.Add(sourceSelector);
 
         var positionGrid = new Grid();
         positionGrid.ColumnDefinitions.Add(new ColumnDefinition());
@@ -178,6 +209,19 @@ public sealed class FurnitureLayoutWindow : Window
         missingBecoTextBox.MinWidth = 100;
         missingBecoTextPanel.Children.Add(missingBecoTextBox);
         form.Children.Add(missingBecoTextPanel);
+        AddSectionHeading(form, "QR-/Barcode-Einstellungen");
+        form.Children.Add(qrEnabledCheckBox);
+        form.Children.Add(new TextBlock { Text = "Primärfeld", Margin = new Thickness(0, 4, 0, 0) });
+        qrSourceBox.ItemsSource = new[] { "Title", "Beco", "Ref", "Price", "SalesPrice", "Ek", "RecommendedPrice" };
+        form.Children.Add(qrSourceBox);
+        form.Children.Add(new TextBlock { Text = "Fallbackfeld" });
+        qrFallbackBox.ItemsSource = new[] { "Title", "Beco", "Ref", "Price", "SalesPrice", "Ek", "RecommendedPrice" };
+        form.Children.Add(qrFallbackBox);
+        form.Children.Add(qrFallbackCheckBox);
+        form.Children.Add(new TextBlock { Text = "Präfix" });
+        form.Children.Add(qrPrefixBox);
+        form.Children.Add(new TextBlock { Text = "Suffix" });
+        form.Children.Add(qrSuffixBox);
         var note = new TextBlock
         {
             Text = "Element links auswählen und in der Vorschau ziehen. Rechtsklick schaltet überlappende Elemente durch. Die blaue Kontur markiert die Auswahl; die Griffe verändern die Größe. Zahleneingaben lassen sich über die Pfeile oder durch horizontales Ziehen bei gedrückter Maustaste ändern.",
@@ -209,7 +253,14 @@ public sealed class FurnitureLayoutWindow : Window
 
         cellWidthBox.TextChanged += CellSize_Changed;
         cellHeightBox.TextChanged += CellSize_Changed;
+        orientationSelector.SelectionChanged += LayoutSettings_Changed;
+        horizontalGapBox.TextChanged += LayoutSettings_Changed;
+        verticalGapBox.TextChanged += LayoutSettings_Changed;
+        columnsBox.TextChanged += LayoutSettings_Changed;
+        tileCountBox.TextChanged += LayoutSettings_Changed;
         elementSelector.SelectionChanged += ElementSelector_SelectionChanged;
+        kindSelector.SelectionChanged += ElementSettings_Changed;
+        sourceSelector.SelectionChanged += ElementSettings_Changed;
         xBox.TextChanged += Element_Changed;
         yBox.TextChanged += Element_Changed;
         widthBox.TextChanged += Element_Changed;
@@ -221,6 +272,14 @@ public sealed class FurnitureLayoutWindow : Window
         autoShrinkTextCheckBox.Checked += Element_Changed;
         autoShrinkTextCheckBox.Unchecked += Element_Changed;
         missingBecoTextBox.TextChanged += MissingBecoText_Changed;
+        qrEnabledCheckBox.Checked += QrSettings_Changed;
+        qrEnabledCheckBox.Unchecked += QrSettings_Changed;
+        qrFallbackCheckBox.Checked += QrSettings_Changed;
+        qrFallbackCheckBox.Unchecked += QrSettings_Changed;
+        qrSourceBox.SelectionChanged += QrSettings_Changed;
+        qrFallbackBox.SelectionChanged += QrSettings_Changed;
+        qrPrefixBox.TextChanged += QrSettings_Changed;
+        qrSuffixBox.TextChanged += QrSettings_Changed;
         foreach (var numericField in new[]
         {
             cellWidthBox, cellHeightBox, xBox, yBox, widthBox, heightBox, fontSizeBox, rotationBox
@@ -239,6 +298,90 @@ public sealed class FurnitureLayoutWindow : Window
         if (isUpdating || !SaveCellSize())
             return;
         RefreshPreview();
+    }
+
+    private void LayoutSettings_Changed(object sender, EventArgs e)
+    {
+        if (isUpdating)
+            return;
+
+        if (orientationSelector.SelectedItem is string orientation)
+            draft.Orientation = orientation;
+        if (TryRead(horizontalGapBox, out var horizontalGap))
+            draft.HorizontalGapCm = horizontalGap;
+        if (TryRead(verticalGapBox, out var verticalGap))
+            draft.VerticalGapCm = verticalGap;
+        if (int.TryParse(columnsBox.Text, NumberStyles.Integer, CultureInfo.CurrentCulture, out var columns))
+            draft.Columns = columns;
+        if (int.TryParse(tileCountBox.Text, NumberStyles.Integer, CultureInfo.CurrentCulture, out var tileCount))
+            draft.TileCount = tileCount;
+        draft.Normalize();
+        RefreshPreview();
+    }
+
+    private void ElementSettings_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (isUpdating || currentElement is null)
+            return;
+        currentElement.Kind = kindSelector.SelectedItem as string ?? currentElement.Kind;
+        currentElement.Source = sourceSelector.SelectedItem as string ?? currentElement.Source;
+        RefreshPreview();
+    }
+
+    private void QrSettings_Changed(object sender, EventArgs e)
+    {
+        if (isUpdating)
+            return;
+        draft.QrCode.Enabled = qrEnabledCheckBox.IsChecked == true;
+        draft.QrCode.UseFallback = qrFallbackCheckBox.IsChecked == true;
+        draft.QrCode.SourceField = qrSourceBox.SelectedItem as string ?? "Ref";
+        draft.QrCode.FallbackField = qrFallbackBox.SelectedItem as string ?? "Beco";
+        draft.QrCode.Prefix = qrPrefixBox.Text;
+        draft.QrCode.Suffix = qrSuffixBox.Text;
+        draft.QrCode.Normalize();
+        RefreshPreview();
+    }
+
+    private void AddElement()
+    {
+        SaveSelectedElement();
+        var element = new PrintElementLayout
+        {
+            Name = "Neues Feld",
+            Kind = "Text",
+            Source = "Title",
+            X = 0.15,
+            Y = Math.Max(0, draft.CellHeightCm - 0.4),
+            Width = Math.Max(0.5, draft.CellWidthCm - 0.3),
+            Height = 0.3,
+            FontSize = 6
+        };
+        draft.Fields.Add(element);
+        RefreshElementSelector(element);
+        RefreshPreview();
+    }
+
+    private void RemoveElement()
+    {
+        if (currentElement is null || draft.Fields.Count <= 1)
+            return;
+        draft.Fields.Remove(currentElement);
+        currentElement = draft.Fields.FirstOrDefault();
+        RefreshElementSelector(currentElement);
+        RefreshPreview();
+    }
+
+    private void RefreshElementSelector(PrintElementLayout? selected = null)
+    {
+        isUpdating = true;
+        elementSelector.ItemsSource = draft.Fields
+            .Select(field => new LayoutChoice(field.Name, field.Id))
+            .ToList();
+        elementSelector.SelectedValue = selected?.Id;
+        if (elementSelector.SelectedIndex < 0 && elementSelector.Items.Count > 0)
+            elementSelector.SelectedIndex = 0;
+        isUpdating = false;
+        LoadElementFields();
     }
 
     private bool SaveCellSize()
@@ -398,6 +541,21 @@ public sealed class FurnitureLayoutWindow : Window
         element.RotationDegrees = Math.Clamp(rotation, -180, 180);
         element.Bold = boldCheckBox.IsChecked == true;
         element.AutoShrinkText = autoShrinkTextCheckBox.IsChecked == true;
+        element.Name = element.Kind switch
+        {
+            "Photo" => "Foto",
+            "Qr" => "QR-Code",
+            "Barcode" => "Barcode",
+            "Price" => "Preis",
+            _ => element.Source switch
+            {
+                "Title" => "Beschreibung",
+                "Beco" => "BECO",
+                "Ref" => "Referenznummer",
+                "Ek" => "EK",
+                _ => "Textfeld"
+            }
+        };
     }
 
     private void LoadFields()
@@ -405,6 +563,18 @@ public sealed class FurnitureLayoutWindow : Window
         isUpdating = true;
         cellWidthBox.Text = Format(draft.CellWidthCm);
         cellHeightBox.Text = Format(draft.CellHeightCm);
+        orientationSelector.SelectedItem = draft.Orientation;
+        horizontalGapBox.Text = Format(draft.HorizontalGapCm);
+        verticalGapBox.Text = Format(draft.VerticalGapCm);
+        columnsBox.Text = draft.Columns.ToString(CultureInfo.CurrentCulture);
+        tileCountBox.Text = draft.TileCount.ToString(CultureInfo.CurrentCulture);
+        qrEnabledCheckBox.IsChecked = draft.QrCode.Enabled;
+        qrFallbackCheckBox.IsChecked = draft.QrCode.UseFallback;
+        qrSourceBox.SelectedItem = draft.QrCode.SourceField;
+        qrFallbackBox.SelectedItem = draft.QrCode.FallbackField;
+        qrPrefixBox.Text = draft.QrCode.Prefix;
+        qrSuffixBox.Text = draft.QrCode.Suffix;
+        RefreshElementSelector(currentElement);
         isUpdating = false;
         LoadElementFields();
     }
@@ -420,30 +590,25 @@ public sealed class FurnitureLayoutWindow : Window
         heightBox.Text = item is null ? "" : Format(item.Height);
         fontSizeBox.Text = item is null ? "" : Format(item.FontSize);
         rotationBox.Text = item is null ? "" : Format(item.RotationDegrees);
+        kindSelector.SelectedItem = item?.Kind;
+        sourceSelector.SelectedItem = item?.Source;
         boldCheckBox.IsChecked = item?.Bold == true;
-        autoShrinkTextCheckBox.Visibility = ReferenceEquals(item, draft.Title)
+        autoShrinkTextCheckBox.Visibility = item?.Kind == "Text" && item.Source == "Title"
             ? Visibility.Visible
             : Visibility.Collapsed;
         autoShrinkTextCheckBox.IsChecked = item?.AutoShrinkText != false;
-        missingBecoTextPanel.Visibility = ReferenceEquals(item, draft.Beco)
+        missingBecoTextPanel.Visibility = item?.Source == "Beco"
             ? Visibility.Visible
             : Visibility.Collapsed;
         missingBecoTextBox.Text = draft.MissingBecoText;
         isUpdating = false;
     }
 
-    private PrintElementLayout? SelectedElement() =>
-        (elementSelector.SelectedItem as LayoutChoice)?.Key switch
-        {
-            "Photo" => draft.Photo,
-            "Qr" => draft.Qr,
-            "Title" => draft.Title,
-            "Beco" => draft.Beco,
-            "Ref" => draft.Ref,
-            "Price" => draft.Price,
-            "Ek" => draft.Ek,
-            _ => null
-        };
+    private PrintElementLayout? SelectedElement()
+    {
+        var id = (elementSelector.SelectedItem as LayoutChoice)?.Key;
+        return draft.Fields.FirstOrDefault(field => field.Id == id);
+    }
 
     private void RefreshPreview()
     {

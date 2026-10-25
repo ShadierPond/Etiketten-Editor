@@ -15,16 +15,17 @@ Das Repository enthält zwei Oberflächen:
 - Artikel und Kategorien lokal verwalten
 - Suche nach Beschreibung, BECO-Nummer, Referenz und Preisen
 - Fotos pro Artikel auswählen und in der lokalen Mediathek wiederverwenden
-- Quick-Service-Artikel mit QR-Code markieren
+- QR-/Barcode-Einstellungen mit Primärfeld, optionalem Fallback sowie Präfix und Suffix
 - Etikettenvorlage direkt in einer Vorschau bearbeiten
 - Position, Größe, Schrift, Drehung und Ersatztext für fehlende BECO-Nummern
   konfigurieren
 - Druckvorschau für eine Kategorie oder den gesamten Katalog
-- PDF-Export und A4-Druck im 5×3-Etikettenraster
+- PDF-Export und A4-Druck im Hoch- oder Querformat mit konfigurierbaren Spalten, Abständen und Etikettenanzahl
+- Dynamische Etikettenfelder für Text, Foto, Preis, QR-Code und Barcode
 - Mitarbeiterkarten und QR-Codes pro Filiale verwalten
 - JSON-Import und -Export einschließlich eingebetteter Fotos
 - automatische lokale Speicherung mit SQLite
-- Quick-Service-QR-Codes als ZIP exportieren
+- QR-/Barcode-Dateien als ZIP exportieren
 - öffentliche Updates aus den GitHub-Releases dieses Repositorys
 
 ## Desktop-Anwendung bauen
