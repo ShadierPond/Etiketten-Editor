@@ -17,16 +17,28 @@ public sealed class FurnitureLayoutWindow : Window
     private readonly ComboBox elementSelector = new();
     private readonly TextBox fieldNameBox = new();
     private readonly ComboBox orientationSelector = new();
+    private readonly ComboBox paperFormatSelector = new();
     private readonly ComboBox kindSelector = new();
-    private readonly ComboBox sourceSelector = new();
-    private readonly TextBox staticTextBox = new();
-    private readonly StackPanel staticTextPanel = new();
+    private readonly TextBox numberSuffixBox = new();
+    private readonly StackPanel numberSuffixPanel = new();
+    private readonly Viewbox sheetPreview = new()
+    {
+        Stretch = Stretch.Uniform,
+        Margin = new Thickness(12),
+        HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Center,
+        MaxWidth = 520,
+        MaxHeight = 500
+    };
+    private readonly ContentControl previewHost = new();
+    private readonly TabControl settingsTabs = new();
     private readonly TextBox horizontalGapBox = new();
     private readonly TextBox verticalGapBox = new();
     private readonly TextBox columnsBox = new();
     private readonly TextBox tileCountBox = new();
     private readonly ComboBox qrSourceBox = new();
     private readonly ComboBox qrFallbackBox = new();
+    private readonly StackPanel qrFallbackPanel = new();
     private readonly TextBox qrPrefixBox = new();
     private readonly TextBox qrSuffixBox = new();
     private readonly CheckBox qrEnabledCheckBox = new() { Content = "QR-/Barcode-Erzeugung aktiv" };
@@ -82,6 +94,7 @@ public sealed class FurnitureLayoutWindow : Window
         this.photoLibrary = photoLibrary;
         draft = currentLayout.Copy();
         Result = draft;
+        ConfigureSettingsTabs();
 
         Title = "Etikettenvorlage";
         Width = 920;
@@ -134,29 +147,66 @@ public sealed class FurnitureLayoutWindow : Window
         root.Children.Add(buttons);
 
         var columns = new Grid();
-        columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(340) });
+        columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(370) });
         columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         root.Children.Add(columns);
 
-        var form = new StackPanel { Margin = new Thickness(0, 0, 20, 0) };
-        AddSectionHeading(form, "Zellengröße");
         var cellSize = new Grid { Margin = new Thickness(0, 4, 0, 12) };
         cellSize.ColumnDefinitions.Add(new ColumnDefinition());
-        cellSize.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+        cellSize.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
         cellSize.ColumnDefinitions.Add(new ColumnDefinition());
         cellSize.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         cellSize.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         AddNumericField(cellSize, "Breite (cm)", cellWidthBox, 0.1, 0, 0);
         AddNumericField(cellSize, "Höhe (cm)", cellHeightBox, 0.1, 2, 0);
-        form.Children.Add(cellSize);
 
-        AddSectionHeading(form, "Druckraster");
-        orientationSelector.ItemsSource = new[] { "Landscape", "Portrait" };
-        orientationSelector.Margin = new Thickness(0, 4, 0, 8);
-        form.Children.Add(orientationSelector);
+        var generalForm = new StackPanel { Margin = new Thickness(8) };
+        generalForm.Children.Add(new TextBlock
+        {
+            Text = "Blatt und Druckraster",
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(23, 43, 66)),
+            Margin = new Thickness(0, 0, 0, 8)
+        });
+        generalForm.Children.Add(new TextBlock { Text = "Ausrichtung" });
+        orientationSelector.ItemsSource = new[]
+        {
+            new LayoutChoice("Querformat", "Landscape"),
+            new LayoutChoice("Hochformat", "Portrait")
+        };
+        orientationSelector.DisplayMemberPath = nameof(LayoutChoice.Name);
+        orientationSelector.SelectedValuePath = nameof(LayoutChoice.Key);
+        orientationSelector.Margin = new Thickness(0, 2, 0, 5);
+        orientationSelector.MinHeight = 0;
+        orientationSelector.Height = 30;
+        orientationSelector.Width = 220;
+        orientationSelector.HorizontalAlignment = HorizontalAlignment.Left;
+        orientationSelector.VerticalContentAlignment = VerticalAlignment.Center;
+        orientationSelector.Padding = new Thickness(7, 1, 4, 1);
+        generalForm.Children.Add(orientationSelector);
+        generalForm.Children.Add(new TextBlock { Text = "Blattformat" });
+        paperFormatSelector.ItemsSource = new[]
+        {
+            new LayoutChoice("DIN A3", "A3"),
+            new LayoutChoice("DIN A4", "A4"),
+            new LayoutChoice("DIN A5", "A5"),
+            new LayoutChoice("DIN A6", "A6"),
+            new LayoutChoice("Letter", "Letter"),
+            new LayoutChoice("Legal", "Legal")
+        };
+        paperFormatSelector.DisplayMemberPath = nameof(LayoutChoice.Name);
+        paperFormatSelector.SelectedValuePath = nameof(LayoutChoice.Key);
+        paperFormatSelector.MinHeight = 0;
+        paperFormatSelector.Height = 30;
+        paperFormatSelector.Width = 220;
+        paperFormatSelector.HorizontalAlignment = HorizontalAlignment.Left;
+        paperFormatSelector.VerticalContentAlignment = VerticalAlignment.Center;
+        paperFormatSelector.Padding = new Thickness(7, 1, 4, 1);
+        paperFormatSelector.Margin = new Thickness(0, 0, 0, 8);
+        generalForm.Children.Add(paperFormatSelector);
         var gridSettings = new Grid();
         gridSettings.ColumnDefinitions.Add(new ColumnDefinition());
-        gridSettings.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+        gridSettings.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
         gridSettings.ColumnDefinitions.Add(new ColumnDefinition());
         gridSettings.RowDefinitions.Add(new RowDefinition());
         gridSettings.RowDefinitions.Add(new RowDefinition());
@@ -164,9 +214,18 @@ public sealed class FurnitureLayoutWindow : Window
         AddNumericField(gridSettings, "Vertikaler Abstand (cm)", verticalGapBox, 0.1, 2, 0);
         AddNumericField(gridSettings, "Spalten", columnsBox, 1, 0, 1);
         AddNumericField(gridSettings, "Etiketten je Kategorie", tileCountBox, 1, 2, 1);
-        form.Children.Add(gridSettings);
 
-        AddSectionHeading(form, "Element bearbeiten");
+        generalForm.Children.Add(cellSize);
+        generalForm.Children.Add(gridSettings);
+        generalForm.Children.Add(new TextBlock
+        {
+            Text = "Die Vorschau rechts zeigt die Blattorientierung und die Verteilung der Etiketten.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.FromRgb(101, 117, 134)),
+            Margin = new Thickness(0, 12, 0, 0)
+        });
+
+        var labelForm = new StackPanel();
         var elementButtons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 8) };
         var addElement = new Button { Content = "Feld hinzufügen", Margin = new Thickness(0, 0, 6, 0) };
         var removeElement = new Button { Content = "Feld entfernen" };
@@ -174,19 +233,35 @@ public sealed class FurnitureLayoutWindow : Window
         removeElement.Click += (_, _) => RemoveElement();
         elementButtons.Children.Add(addElement);
         elementButtons.Children.Add(removeElement);
-        form.Children.Add(elementButtons);
+        labelForm.Children.Add(new TextBlock
+        {
+            Text = "Etikettfelder",
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(23, 43, 66)),
+            Margin = new Thickness(0, 0, 0, 8)
+        });
+        labelForm.Children.Add(elementButtons);
         elementSelector.Margin = new Thickness(0, 0, 0, 8);
+        elementSelector.MinHeight = 0;
+        elementSelector.Height = 30;
+        elementSelector.Padding = new Thickness(7, 1, 4, 1);
         elementSelector.DisplayMemberPath = nameof(LayoutChoice.Name);
         elementSelector.SelectedValuePath = nameof(LayoutChoice.Key);
-        form.Children.Add(elementSelector);
-        form.Children.Add(new TextBlock
+        labelForm.Children.Add(elementSelector);
+        AddSectionHeading(labelForm, "Feldeigenschaften");
+        labelForm.Children.Add(new TextBlock
         {
             Text = "Feldname",
             Foreground = new SolidColorBrush(Color.FromRgb(67, 87, 106))
         });
         fieldNameBox.Margin = new Thickness(0, 2, 0, 6);
-        form.Children.Add(fieldNameBox);
-        form.Children.Add(new TextBlock
+        fieldNameBox.MinHeight = 0;
+        fieldNameBox.Height = 30;
+        fieldNameBox.Width = 210;
+        fieldNameBox.HorizontalAlignment = HorizontalAlignment.Left;
+        fieldNameBox.Padding = new Thickness(7, 1, 4, 1);
+        labelForm.Children.Add(fieldNameBox);
+        labelForm.Children.Add(new TextBlock
         {
             Text = "Feldeigenschaft",
             Foreground = new SolidColorBrush(Color.FromRgb(67, 87, 106))
@@ -194,36 +269,37 @@ public sealed class FurnitureLayoutWindow : Window
         kindSelector.ItemsSource = new[]
         {
             new LayoutChoice("Text", "Text"),
-            new LayoutChoice("Preis", "Price"),
+            new LayoutChoice("Zahl", "Number"),
             new LayoutChoice("Foto", "Photo"),
             new LayoutChoice("QR-Code", "Qr"),
             new LayoutChoice("Barcode", "Barcode")
         };
         kindSelector.DisplayMemberPath = nameof(LayoutChoice.Name);
         kindSelector.SelectedValuePath = nameof(LayoutChoice.Key);
-        form.Children.Add(kindSelector);
-        form.Children.Add(new TextBlock
+        kindSelector.MinHeight = 0;
+        kindSelector.Height = 30;
+        kindSelector.Width = 210;
+        kindSelector.HorizontalAlignment = HorizontalAlignment.Left;
+        kindSelector.Padding = new Thickness(7, 1, 4, 1);
+        labelForm.Children.Add(kindSelector);
+        numberSuffixPanel.Margin = new Thickness(0, 4, 0, 6);
+        numberSuffixPanel.Children.Add(new TextBlock
         {
-            Text = "Inhalt des Feldes",
-            Foreground = new SolidColorBrush(Color.FromRgb(67, 87, 106)),
-            Margin = new Thickness(0, 4, 0, 0)
-        });
-        sourceSelector.DisplayMemberPath = nameof(LayoutChoice.Name);
-        sourceSelector.SelectedValuePath = nameof(LayoutChoice.Key);
-        form.Children.Add(sourceSelector);
-        staticTextPanel.Margin = new Thickness(0, 4, 0, 6);
-        staticTextPanel.Children.Add(new TextBlock
-        {
-            Text = "Fester Text",
+            Text = "Zahl-Suffix (z. B. €, CHF, kg)",
             Foreground = new SolidColorBrush(Color.FromRgb(67, 87, 106))
         });
-        staticTextPanel.Children.Add(staticTextBox);
-        staticTextPanel.Visibility = Visibility.Collapsed;
-        form.Children.Add(staticTextPanel);
+        numberSuffixPanel.Children.Add(numberSuffixBox);
+        numberSuffixBox.MinHeight = 0;
+        numberSuffixBox.Height = 30;
+        numberSuffixBox.Width = 210;
+        numberSuffixBox.HorizontalAlignment = HorizontalAlignment.Left;
+        numberSuffixBox.Padding = new Thickness(7, 1, 4, 1);
+        numberSuffixPanel.Visibility = Visibility.Collapsed;
+        labelForm.Children.Add(numberSuffixPanel);
 
         var positionGrid = new Grid();
         positionGrid.ColumnDefinitions.Add(new ColumnDefinition());
-        positionGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+        positionGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
         positionGrid.ColumnDefinitions.Add(new ColumnDefinition());
         positionGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         positionGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -235,11 +311,13 @@ public sealed class FurnitureLayoutWindow : Window
         AddNumericField(positionGrid, "Höhe (cm)", heightBox, 0.1, 2, 1);
         AddNumericField(positionGrid, "Schriftgröße (pt)", fontSizeBox, 0.25, 0, 2);
         AddNumericField(positionGrid, "Drehung (°)", rotationBox, 1, 2, 2);
-        form.Children.Add(positionGrid);
+        AddSectionHeading(labelForm, "Position und Darstellung");
+        labelForm.Children.Add(positionGrid);
         boldCheckBox.Margin = new Thickness(0, 8, 0, 0);
-        form.Children.Add(boldCheckBox);
+        boldCheckBox.Visibility = Visibility.Collapsed;
+        labelForm.Children.Add(boldCheckBox);
         autoShrinkTextCheckBox.Margin = new Thickness(0, 8, 0, 0);
-        form.Children.Add(autoShrinkTextCheckBox);
+        labelForm.Children.Add(autoShrinkTextCheckBox);
         missingBecoTextPanel.Margin = new Thickness(0, 8, 0, 0);
         missingBecoTextPanel.Children.Add(new TextBlock
         {
@@ -248,20 +326,31 @@ public sealed class FurnitureLayoutWindow : Window
         });
         missingBecoTextBox.MinWidth = 100;
         missingBecoTextPanel.Children.Add(missingBecoTextBox);
-        form.Children.Add(missingBecoTextPanel);
-        AddSectionHeading(form, "QR-/Barcode-Einstellungen");
-        form.Children.Add(qrEnabledCheckBox);
-        form.Children.Add(new TextBlock { Text = "Primärfeld", Margin = new Thickness(0, 4, 0, 0) });
-        qrSourceBox.ItemsSource = new[] { "Title", "Beco", "Ref", "Price", "SalesPrice", "Ek", "RecommendedPrice" };
-        form.Children.Add(qrSourceBox);
-        form.Children.Add(new TextBlock { Text = "Fallbackfeld" });
-        qrFallbackBox.ItemsSource = new[] { "Title", "Beco", "Ref", "Price", "SalesPrice", "Ek", "RecommendedPrice" };
-        form.Children.Add(qrFallbackBox);
-        form.Children.Add(qrFallbackCheckBox);
-        form.Children.Add(new TextBlock { Text = "Präfix" });
-        form.Children.Add(qrPrefixBox);
-        form.Children.Add(new TextBlock { Text = "Suffix" });
-        form.Children.Add(qrSuffixBox);
+        labelForm.Children.Add(missingBecoTextPanel);
+        AddSectionHeading(labelForm, "QR-/Barcode-Einstellungen");
+        labelForm.Children.Add(qrEnabledCheckBox);
+        labelForm.Children.Add(new TextBlock { Text = "Primärfeld", Margin = new Thickness(0, 4, 0, 0) });
+        labelForm.Children.Add(qrSourceBox);
+        qrFallbackPanel.Margin = new Thickness(0, 4, 0, 0);
+        qrFallbackPanel.Children.Add(new TextBlock { Text = "Fallbackfeld" });
+        qrFallbackPanel.Children.Add(qrFallbackBox);
+        labelForm.Children.Add(qrFallbackCheckBox);
+        labelForm.Children.Add(qrFallbackPanel);
+        labelForm.Children.Add(new TextBlock { Text = "Präfix" });
+        labelForm.Children.Add(qrPrefixBox);
+        labelForm.Children.Add(new TextBlock { Text = "Suffix" });
+        labelForm.Children.Add(qrSuffixBox);
+        foreach (var input in new[] { elementSelector, qrSourceBox, qrFallbackBox })
+        {
+            input.Width = 210;
+            input.HorizontalAlignment = HorizontalAlignment.Left;
+        }
+        foreach (var input in new[] { qrPrefixBox, qrSuffixBox })
+        {
+            input.Width = 210;
+            input.Height = 34;
+            input.HorizontalAlignment = HorizontalAlignment.Left;
+        }
         var note = new TextBlock
         {
             Text = "Element links auswählen und in der Vorschau ziehen. Rechtsklick schaltet überlappende Elemente durch. Die blaue Kontur markiert die Auswahl; die Griffe verändern die Größe. Zahleneingaben lassen sich über die Pfeile oder durch horizontales Ziehen bei gedrückter Maustaste ändern.",
@@ -269,14 +358,26 @@ public sealed class FurnitureLayoutWindow : Window
             Foreground = new SolidColorBrush(Color.FromRgb(101, 117, 134)),
             Margin = new Thickness(0, 16, 0, 0)
         };
-        form.Children.Add(note);
+        labelForm.Children.Add(note);
 
-        var formScroll = new ScrollViewer
+        var generalScroll = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = form
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = generalForm
         };
-        columns.Children.Add(formScroll);
+        var labelScroll = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Padding = new Thickness(8),
+            Content = labelForm
+        };
+        settingsTabs.Items.Add(new TabItem { Header = "Allgemein", Content = generalScroll });
+        settingsTabs.Items.Add(new TabItem { Header = "Etikett", Content = labelScroll });
+        settingsTabs.SelectedIndex = 0;
+        settingsTabs.SelectionChanged += SettingsTabs_SelectionChanged;
+        columns.Children.Add(settingsTabs);
 
         var previewPanel = new Border
         {
@@ -284,16 +385,26 @@ public sealed class FurnitureLayoutWindow : Window
             BorderBrush = new SolidColorBrush(Color.FromRgb(216, 224, 232)),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
-            Child = cellPreview
+            Padding = new Thickness(16),
+            Child = new Grid
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                Children = { previewHost }
+            }
         };
         Grid.SetColumn(previewPanel, 1);
         columns.Children.Add(previewPanel);
         DockPanel.SetDock(columns, Dock.Top);
         Content = root;
+        previewHost.HorizontalAlignment = HorizontalAlignment.Center;
+        previewHost.VerticalAlignment = VerticalAlignment.Center;
+        previewHost.Content = sheetPreview;
 
         cellWidthBox.TextChanged += CellSize_Changed;
         cellHeightBox.TextChanged += CellSize_Changed;
         orientationSelector.SelectionChanged += LayoutSettings_Changed;
+        paperFormatSelector.SelectionChanged += LayoutSettings_Changed;
         horizontalGapBox.TextChanged += LayoutSettings_Changed;
         verticalGapBox.TextChanged += LayoutSettings_Changed;
         columnsBox.TextChanged += LayoutSettings_Changed;
@@ -301,8 +412,7 @@ public sealed class FurnitureLayoutWindow : Window
         elementSelector.SelectionChanged += ElementSelector_SelectionChanged;
         fieldNameBox.TextChanged += FieldName_Changed;
         kindSelector.SelectionChanged += ElementSettings_Changed;
-        sourceSelector.SelectionChanged += ElementSettings_Changed;
-        staticTextBox.TextChanged += StaticText_Changed;
+        numberSuffixBox.TextChanged += NumberSuffix_Changed;
         xBox.TextChanged += Element_Changed;
         yBox.TextChanged += Element_Changed;
         widthBox.TextChanged += Element_Changed;
@@ -335,6 +445,101 @@ public sealed class FurnitureLayoutWindow : Window
         };
     }
 
+    private void ConfigureSettingsTabs()
+    {
+        settingsTabs.Background = Brushes.Transparent;
+        settingsTabs.BorderThickness = new Thickness(0);
+
+        var tabPanel = new FrameworkElementFactory(typeof(TabPanel), "HeaderPanel");
+        tabPanel.SetValue(TabPanel.IsItemsHostProperty, true);
+        tabPanel.SetValue(FrameworkElement.MarginProperty, new Thickness(12, 0, 0, 0));
+        tabPanel.SetValue(KeyboardNavigation.TabIndexProperty, 1);
+        tabPanel.SetValue(DockPanel.DockProperty, Dock.Top);
+
+        var contentHost = new FrameworkElementFactory(typeof(ContentPresenter), "PART_SelectedContentHost");
+        contentHost.SetValue(ContentPresenter.ContentSourceProperty, "SelectedContent");
+        contentHost.SetValue(FrameworkElement.MarginProperty, new Thickness(0));
+        contentHost.SetValue(KeyboardNavigation.TabIndexProperty, 2);
+
+        var tabControlPanel = new FrameworkElementFactory(typeof(DockPanel));
+        tabControlPanel.SetValue(DockPanel.LastChildFillProperty, true);
+        tabControlPanel.SetValue(KeyboardNavigation.TabNavigationProperty, KeyboardNavigationMode.Local);
+        tabControlPanel.SetValue(UIElement.SnapsToDevicePixelsProperty, true);
+        tabControlPanel.AppendChild(tabPanel);
+        tabControlPanel.AppendChild(contentHost);
+
+        settingsTabs.Template = new ControlTemplate(typeof(TabControl))
+        {
+            VisualTree = tabControlPanel
+        };
+
+        var tabBorder = new FrameworkElementFactory(typeof(Border), "TabBorder");
+        tabBorder.SetValue(Border.PaddingProperty, new TemplateBindingExtension(Control.PaddingProperty));
+        tabBorder.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+        tabBorder.SetValue(Border.BorderBrushProperty, Brushes.Transparent);
+        tabBorder.SetValue(Border.BorderThicknessProperty, new Thickness(1, 1, 1, 0));
+        tabBorder.SetValue(Border.CornerRadiusProperty, new CornerRadius(8, 8, 0, 0));
+        tabBorder.SetValue(UIElement.SnapsToDevicePixelsProperty, true);
+
+        var header = new FrameworkElementFactory(typeof(ContentPresenter));
+        header.SetValue(HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        header.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);
+        header.SetValue(ContentPresenter.ContentSourceProperty, "Header");
+        header.SetValue(ContentPresenter.RecognizesAccessKeyProperty, true);
+        tabBorder.AppendChild(header);
+
+        var tabItemTemplate = new ControlTemplate(typeof(TabItem))
+        {
+            VisualTree = tabBorder
+        };
+        tabItemTemplate.Triggers.Add(new Trigger
+        {
+            Property = UIElement.IsMouseOverProperty,
+            Value = true,
+            Setters =
+            {
+                new Setter(Border.BackgroundProperty, new SolidColorBrush(Color.FromRgb(232, 241, 250)), "TabBorder"),
+                new Setter(Control.ForegroundProperty, new SolidColorBrush(Color.FromRgb(36, 74, 115)))
+            }
+        });
+        tabItemTemplate.Triggers.Add(new Trigger
+        {
+            Property = Selector.IsSelectedProperty,
+            Value = true,
+            Setters =
+            {
+                new Setter(Border.BackgroundProperty, Brushes.White, "TabBorder"),
+                new Setter(Border.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(216, 224, 232)), "TabBorder"),
+                new Setter(Control.ForegroundProperty, new SolidColorBrush(Color.FromRgb(24, 52, 79)))
+            }
+        });
+        tabItemTemplate.Triggers.Add(new Trigger
+        {
+            Property = UIElement.IsKeyboardFocusedProperty,
+            Value = true,
+            Setters =
+            {
+                new Setter(Border.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(36, 74, 115)), "TabBorder")
+            }
+        });
+        tabItemTemplate.Triggers.Add(new Trigger
+        {
+            Property = UIElement.IsEnabledProperty,
+            Value = false,
+            Setters =
+            {
+                new Setter(Control.ForegroundProperty, new SolidColorBrush(Color.FromRgb(154, 168, 181)))
+            }
+        });
+
+        var tabItemStyle = new Style(typeof(TabItem));
+        tabItemStyle.Setters.Add(new Setter(Control.ForegroundProperty, new SolidColorBrush(Color.FromRgb(82, 107, 131))));
+        tabItemStyle.Setters.Add(new Setter(Control.FontWeightProperty, FontWeights.SemiBold));
+        tabItemStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(16, 9, 16, 9)));
+        tabItemStyle.Setters.Add(new Setter(Control.TemplateProperty, tabItemTemplate));
+        settingsTabs.Resources[typeof(TabItem)] = tabItemStyle;
+    }
+
     private void CellSize_Changed(object sender, TextChangedEventArgs e)
     {
         if (isUpdating || !SaveCellSize())
@@ -347,8 +552,10 @@ public sealed class FurnitureLayoutWindow : Window
         if (isUpdating)
             return;
 
-        if (orientationSelector.SelectedItem is string orientation)
+        if (orientationSelector.SelectedValue is string orientation)
             draft.Orientation = orientation;
+        if (paperFormatSelector.SelectedValue is string paperFormat)
+            draft.PaperFormat = paperFormat;
         if (TryRead(horizontalGapBox, out var horizontalGap))
             draft.HorizontalGapCm = horizontalGap;
         if (TryRead(verticalGapBox, out var verticalGap))
@@ -365,27 +572,24 @@ public sealed class FurnitureLayoutWindow : Window
     {
         if (isUpdating || currentElement is null)
             return;
-        if (ReferenceEquals(sender, kindSelector))
-        {
-            currentElement.Kind = kindSelector.SelectedValue as string ?? currentElement.Kind;
-            UpdateSourceOptions();
-        }
-        if (currentElement.Kind is not ("Photo" or "Qr" or "Barcode"))
-            currentElement.Source = sourceSelector.SelectedValue as string ?? currentElement.Source;
-        else
-            currentElement.Source = "Configured";
-        sourceSelector.IsEnabled = currentElement.Kind is not ("Photo" or "Qr" or "Barcode");
-        staticTextPanel.Visibility = currentElement.Source == "StaticText"
+        currentElement.Kind = kindSelector.SelectedValue as string ?? currentElement.Kind;
+        if (currentElement.Kind != "Text")
+            currentElement.Bold = false;
+        if (currentElement.Kind == "Number" && string.IsNullOrEmpty(currentElement.Suffix))
+            currentElement.Suffix = " €";
+        numberSuffixBox.Text = currentElement.Suffix;
+        LoadElementFields();
+        numberSuffixPanel.Visibility = currentElement.Kind == "Number"
             ? Visibility.Visible
             : Visibility.Collapsed;
         RefreshPreview();
     }
 
-    private void StaticText_Changed(object sender, TextChangedEventArgs e)
+    private void NumberSuffix_Changed(object sender, TextChangedEventArgs e)
     {
         if (isUpdating || currentElement is null)
             return;
-        currentElement.StaticText = staticTextBox.Text;
+        currentElement.Suffix = numberSuffixBox.Text;
         RefreshPreview();
     }
 
@@ -406,11 +610,14 @@ public sealed class FurnitureLayoutWindow : Window
             return;
         draft.QrCode.Enabled = qrEnabledCheckBox.IsChecked == true;
         draft.QrCode.UseFallback = qrFallbackCheckBox.IsChecked == true;
-        draft.QrCode.SourceField = qrSourceBox.SelectedItem as string ?? "Ref";
-        draft.QrCode.FallbackField = qrFallbackBox.SelectedItem as string ?? "Beco";
+        draft.QrCode.SourceField = qrSourceBox.SelectedValue as string ?? draft.QrCode.SourceField;
+        draft.QrCode.FallbackField = qrFallbackBox.SelectedValue as string ?? draft.QrCode.FallbackField;
         draft.QrCode.Prefix = qrPrefixBox.Text;
         draft.QrCode.Suffix = qrSuffixBox.Text;
         draft.QrCode.Normalize();
+        qrFallbackPanel.Visibility = qrFallbackCheckBox.IsChecked == true
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         RefreshPreview();
     }
 
@@ -421,7 +628,7 @@ public sealed class FurnitureLayoutWindow : Window
         {
             Name = "Neues Feld",
             Kind = "Text",
-            Source = "Title",
+            Source = "Custom",
             X = 0.15,
             Y = Math.Max(0, draft.CellHeightCm - 0.4),
             Width = Math.Max(0.5, draft.CellWidthCm - 0.3),
@@ -429,6 +636,7 @@ public sealed class FurnitureLayoutWindow : Window
             FontSize = 6
         };
         draft.Fields.Add(element);
+        RefreshQrFieldOptions();
         RefreshElementSelector(element);
         RefreshPreview();
     }
@@ -439,6 +647,8 @@ public sealed class FurnitureLayoutWindow : Window
             return;
         draft.Fields.Remove(currentElement);
         currentElement = draft.Fields.FirstOrDefault();
+        draft.Normalize();
+        RefreshQrFieldOptions();
         RefreshElementSelector(currentElement);
         RefreshPreview();
     }
@@ -611,11 +821,11 @@ public sealed class FurnitureLayoutWindow : Window
         element.Height = Math.Clamp(height, 0, draft.CellHeightCm - element.Y);
         element.FontSize = Math.Clamp(fontSize, 4, 24);
         element.RotationDegrees = Math.Clamp(rotation, -180, 180);
-        element.Bold = boldCheckBox.IsChecked == true;
+        element.Bold = element.Kind == "Text" && boldCheckBox.IsChecked == true;
         element.AutoShrinkText = autoShrinkTextCheckBox.IsChecked == true;
+        element.Suffix = numberSuffixBox.Text;
         if (!string.IsNullOrWhiteSpace(fieldNameBox.Text))
             element.Name = fieldNameBox.Text.Trim();
-        element.StaticText = staticTextBox.Text;
     }
 
     private void LoadFields()
@@ -623,15 +833,17 @@ public sealed class FurnitureLayoutWindow : Window
         isUpdating = true;
         cellWidthBox.Text = Format(draft.CellWidthCm);
         cellHeightBox.Text = Format(draft.CellHeightCm);
-        orientationSelector.SelectedItem = draft.Orientation;
+        orientationSelector.SelectedValue = draft.Orientation;
+        paperFormatSelector.SelectedValue = draft.PaperFormat;
         horizontalGapBox.Text = Format(draft.HorizontalGapCm);
         verticalGapBox.Text = Format(draft.VerticalGapCm);
         columnsBox.Text = draft.Columns.ToString(CultureInfo.CurrentCulture);
         tileCountBox.Text = draft.TileCount.ToString(CultureInfo.CurrentCulture);
         qrEnabledCheckBox.IsChecked = draft.QrCode.Enabled;
         qrFallbackCheckBox.IsChecked = draft.QrCode.UseFallback;
-        qrSourceBox.SelectedItem = draft.QrCode.SourceField;
-        qrFallbackBox.SelectedItem = draft.QrCode.FallbackField;
+        RefreshQrFieldOptions();
+        qrSourceBox.SelectedValue = draft.QrCode.SourceField;
+        qrFallbackBox.SelectedValue = draft.QrCode.FallbackField;
         qrPrefixBox.Text = draft.QrCode.Prefix;
         qrSuffixBox.Text = draft.QrCode.Suffix;
         RefreshElementSelector(currentElement);
@@ -652,49 +864,46 @@ public sealed class FurnitureLayoutWindow : Window
         rotationBox.Text = item is null ? "" : Format(item.RotationDegrees);
         fieldNameBox.Text = item?.Name ?? "";
         kindSelector.SelectedValue = item?.Kind;
-        UpdateSourceOptions();
-        sourceSelector.SelectedValue = item?.Source;
-        sourceSelector.IsEnabled = item?.Kind is not ("Photo" or "Qr" or "Barcode");
-        staticTextBox.Text = item?.StaticText ?? "";
-        staticTextPanel.Visibility = item?.Source == "StaticText"
+        numberSuffixBox.Text = item?.Suffix ?? "";
+        numberSuffixPanel.Visibility = item?.Kind == "Number"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        boldCheckBox.Visibility = item?.Kind == "Text"
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        qrFallbackPanel.Visibility = draft.QrCode.UseFallback
             ? Visibility.Visible
             : Visibility.Collapsed;
         boldCheckBox.IsChecked = item?.Bold == true;
-        autoShrinkTextCheckBox.Visibility = item?.Kind == "Text" && item.Source == "Title"
+        autoShrinkTextCheckBox.Visibility = item?.Kind == "Text"
             ? Visibility.Visible
             : Visibility.Collapsed;
         autoShrinkTextCheckBox.IsChecked = item?.AutoShrinkText != false;
-        missingBecoTextPanel.Visibility = item?.Source == "Beco"
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        missingBecoTextPanel.Visibility = Visibility.Collapsed;
         missingBecoTextBox.Text = draft.MissingBecoText;
         isUpdating = false;
     }
 
-    private void UpdateSourceOptions()
+    private void RefreshQrFieldOptions()
     {
-        var kind = kindSelector.SelectedValue as string;
-        var options = kind switch
-        {
-            "Price" => new[]
-            {
-                new LayoutChoice("Kassenpreis", "Price"),
-                new LayoutChoice("Verkaufspreis", "SalesPrice"),
-                new LayoutChoice("Einkaufspreis", "Ek"),
-                new LayoutChoice("Empfohlener Preis", "RecommendedPrice")
-            },
-            "Text" => new[]
-            {
-                new LayoutChoice("Beschreibung", "Title"),
-                new LayoutChoice("BECO", "Beco"),
-                new LayoutChoice("Referenznummer", "Ref"),
-                new LayoutChoice("Fester Text", "StaticText")
-            },
-            _ => new[] { new LayoutChoice("Über QR-/Barcode-Einstellungen", "Configured") }
-        };
-        sourceSelector.ItemsSource = options;
-        if (kind is "Photo" or "Qr" or "Barcode")
-            sourceSelector.SelectedValue = "Configured";
+        var fields = draft.Fields
+            .Where(field => field.Kind is "Text" or "Number")
+            .Select(field => new LayoutChoice(field.Name, field.Id))
+            .ToList();
+        if (fields.Count == 0)
+            fields.AddRange(draft.Fields.Select(field => new LayoutChoice(field.Name, field.Id)));
+        qrSourceBox.DisplayMemberPath = nameof(LayoutChoice.Name);
+        qrSourceBox.SelectedValuePath = nameof(LayoutChoice.Key);
+        qrFallbackBox.DisplayMemberPath = nameof(LayoutChoice.Name);
+        qrFallbackBox.SelectedValuePath = nameof(LayoutChoice.Key);
+        qrSourceBox.ItemsSource = fields;
+        qrFallbackBox.ItemsSource = fields.ToList();
+        if (!fields.Any(field => field.Key == draft.QrCode.SourceField))
+            draft.QrCode.SourceField = fields[0].Key;
+        if (!fields.Any(field => field.Key == draft.QrCode.FallbackField))
+            draft.QrCode.FallbackField = fields[0].Key;
+        qrSourceBox.SelectedValue = draft.QrCode.SourceField;
+        qrFallbackBox.SelectedValue = draft.QrCode.FallbackField;
     }
 
     private PrintElementLayout? SelectedElement()
@@ -735,6 +944,100 @@ public sealed class FurnitureLayoutWindow : Window
             }
         }
         cellPreview.Child = cell;
+        RefreshGeneralPreview();
+        previewHost.Content = settingsTabs.SelectedIndex == 0 ? sheetPreview : cellPreview;
+    }
+
+    private void SettingsTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(e.Source, settingsTabs))
+            return;
+        previewHost.Content = settingsTabs.SelectedIndex == 0 ? sheetPreview : cellPreview;
+        RefreshGeneralPreview();
+    }
+
+    private void RefreshGeneralPreview()
+    {
+        draft.Normalize();
+        var portrait = draft.Orientation == "Portrait";
+        var (paperWidthCm, paperHeightCm) = FurniturePrintLayout.GetPaperDimensionsCm(draft.PaperFormat);
+        var pageWidthCm = portrait ? paperWidthCm : paperHeightCm;
+        var pageHeightCm = portrait ? paperHeightCm : paperWidthCm;
+        const double scale = 14;
+        var pageWidth = pageWidthCm * scale;
+        var pageHeight = pageHeightCm * scale;
+        const double pageMargin = 18;
+        const double headerHeight = 32;
+        var canvas = new Canvas
+        {
+            Width = pageWidth,
+            Height = pageHeight,
+            Background = Brushes.White
+        };
+        canvas.Children.Add(new Border
+        {
+            Width = pageWidth,
+            Height = pageHeight,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(155, 168, 180)),
+            BorderThickness = new Thickness(1)
+        });
+
+        var labelWidth = draft.CellWidthCm * scale;
+        var labelHeight = draft.CellHeightCm * scale;
+        var gapX = draft.HorizontalGapCm * scale;
+        var gapY = draft.VerticalGapCm * scale;
+        var maxColumns = Math.Max(1,
+            (int)((pageWidth - pageMargin * 2 + gapX) / (labelWidth + gapX)));
+        var columns = Math.Clamp(draft.Columns, 1, Math.Min(draft.TileCount, maxColumns));
+        var rowsPerPage = Math.Max(1,
+            (int)((pageHeight - headerHeight - pageMargin + gapY) / (labelHeight + gapY)));
+        var itemsOnPage = Math.Min(draft.TileCount, columns * rowsPerPage);
+        var rows = Math.Max(1, (int)Math.Ceiling(itemsOnPage / (double)columns));
+        var totalWidth = columns * labelWidth + Math.Max(0, columns - 1) * gapX;
+        var totalHeight = rows * labelHeight + Math.Max(0, rows - 1) * gapY;
+        var left = Math.Max(pageMargin, (pageWidth - totalWidth) / 2);
+        var top = Math.Max(headerHeight, headerHeight + (pageHeight - headerHeight - totalHeight) / 2);
+        canvas.Children.Add(new TextBlock
+        {
+            Text = $"{draft.PaperFormat} · {(portrait ? "Hochformat" : "Querformat")}",
+            Width = pageWidth - pageMargin * 2,
+            Height = 20,
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(23, 43, 66)),
+            TextAlignment = TextAlignment.Center
+        });
+        Canvas.SetLeft(canvas.Children[^1], pageMargin);
+        Canvas.SetTop(canvas.Children[^1], 8);
+
+        for (var index = 0; index < itemsOnPage; index++)
+        {
+            var rectangle = new Rectangle
+            {
+                Width = Math.Max(2, labelWidth),
+                Height = Math.Max(2, labelHeight),
+                Fill = new SolidColorBrush(Color.FromRgb(244, 247, 249)),
+                Stroke = new SolidColorBrush(Color.FromRgb(71, 105, 132)),
+                StrokeThickness = 0.8
+            };
+            Canvas.SetLeft(rectangle, left + index % columns * (labelWidth + gapX));
+            Canvas.SetTop(rectangle, top + index / columns * (labelHeight + gapY));
+            canvas.Children.Add(rectangle);
+        }
+        if (itemsOnPage < draft.TileCount)
+        {
+            canvas.Children.Add(new TextBlock
+            {
+                Text = $"Seite 1: {itemsOnPage} von {draft.TileCount} Etiketten",
+                Width = pageWidth - pageMargin * 2,
+                FontSize = 8,
+                Foreground = new SolidColorBrush(Color.FromRgb(101, 117, 134)),
+                TextAlignment = TextAlignment.Center
+            });
+            Canvas.SetLeft(canvas.Children[^1], pageMargin);
+            Canvas.SetTop(canvas.Children[^1], pageHeight - 18);
+        }
+        sheetPreview.Child = canvas;
     }
 
     private void PreviewElement_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -877,14 +1180,8 @@ public sealed class FurnitureLayoutWindow : Window
         currentElement = selected;
         if (elementSelector.ItemsSource is IEnumerable<LayoutChoice> choices)
         {
-            var key = selected == draft.Photo ? "Photo" :
-                selected == draft.Qr ? "Qr" :
-                selected == draft.Title ? "Title" :
-                selected == draft.Beco ? "Beco" :
-                selected == draft.Ref ? "Ref" :
-                selected == draft.Price ? "Price" : "Ek";
             isUpdating = true;
-            elementSelector.SelectedItem = choices.First(choice => choice.Key == key);
+            elementSelector.SelectedItem = choices.FirstOrDefault(choice => choice.Key == selected.Id);
             isUpdating = false;
         }
         LoadElementFields();
@@ -1134,7 +1431,7 @@ public sealed class FurnitureLayoutWindow : Window
             Text = text,
             FontWeight = FontWeights.SemiBold,
             Foreground = new SolidColorBrush(Color.FromRgb(23, 43, 66)),
-            Margin = new Thickness(0, 0, 0, 4)
+            Margin = new Thickness(0, 12, 0, 4)
         });
 
     private void AddNumericField(
@@ -1145,7 +1442,7 @@ public sealed class FurnitureLayoutWindow : Window
         int column,
         int row)
     {
-        var panel = new StackPanel { Margin = new Thickness(0, 3, 0, 6) };
+        var panel = new StackPanel { Margin = new Thickness(2, 1, 2, 3) };
         panel.Children.Add(new TextBlock { Text = label, Foreground = new SolidColorBrush(Color.FromRgb(67, 87, 106)) });
         input.Tag = step;
         input.MinWidth = 0;
@@ -1156,10 +1453,12 @@ public sealed class FurnitureLayoutWindow : Window
         input.PreviewMouseLeftButtonUp += NumericField_PreviewMouseLeftButtonUp;
         input.LostMouseCapture += NumericField_LostMouseCapture;
 
-        input.Padding = new Thickness(9, 3, 4, 3);
-        var inputGrid = new Grid { Width = 102, Height = 38 };
+        input.Padding = new Thickness(7, 1, 3, 1);
+        input.MinHeight = 0;
+        input.Height = 30;
+        var inputGrid = new Grid { Width = 88, Height = 30, HorizontalAlignment = HorizontalAlignment.Left };
         inputGrid.ColumnDefinitions.Add(new ColumnDefinition());
-        inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
+        inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
         inputGrid.RowDefinitions.Add(new RowDefinition());
         inputGrid.RowDefinitions.Add(new RowDefinition());
         Grid.SetRowSpan(input, 2);
@@ -1187,9 +1486,10 @@ public sealed class FurnitureLayoutWindow : Window
         {
             Content = glyph,
             Padding = new Thickness(0),
-            Margin = new Thickness(2, 1, 0, 1),
+            Margin = new Thickness(1, 0, 0, 0),
             MinHeight = 0,
-            FontSize = 8,
+            Height = 14,
+            FontSize = 7,
             FontWeight = FontWeights.Bold
         };
         button.Click += (_, _) => action();

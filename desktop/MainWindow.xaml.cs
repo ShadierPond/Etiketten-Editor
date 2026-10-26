@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
@@ -27,6 +28,7 @@ public partial class MainWindow : Window
     private bool isSelectingSearchResult;
     private ScrollViewer? previewScrollViewer;
     private readonly List<Border> previewFurnitureCells = [];
+    private readonly List<DataGridColumn> furnitureFieldColumns = [];
     private Border? highlightedPreviewCell;
     private readonly DispatcherTimer previewZoomTimer;
     private int previewDocumentRevision;
@@ -112,14 +114,75 @@ public partial class MainWindow : Window
     {
         if (FurnitureGrid is null || data.Pages.Count == 0)
             return;
+        data.Normalize();
+        RefreshFurnitureFieldColumns();
         var query = SearchBox.Text.Trim();
         FurnitureGrid.ItemsSource = CurrentFurniturePage.Items
-            .Select((item, index) => new CatalogGridRow(CurrentFurniturePage, item, index, index + 1, furniturePageIndex, photoLibrary.GetPhotoPath(data, item.Photo)))
+            .Select((item, index) => new CatalogGridRow(
+                CurrentFurniturePage,
+                item,
+                index,
+                index + 1,
+                furniturePageIndex,
+                data.FurniturePrintLayout.Fields
+                    .Where(field => field.Kind == "Photo")
+                    .ToDictionary(field => field.Id, field => photoLibrary.GetPhotoPath(
+                        data, item.FieldValues.GetValueOrDefault(field.Id, item.Photo)))))
             .Where(row => Matches(query, CurrentFurniturePage.Name, row.Title, row.Beco, row.Ref,
-                row.Price, row.Ek, row.SalesPrice, row.RecommendedPrice))
+                row.Price, row.Ek, row.SalesPrice, string.Join(" ", row.Item.FieldValues.Values)))
             .ToList();
         var tileCount = data.FurniturePrintLayout.TileCount;
-        FurnitureCountText.Text = $"  {tileCount} Etiketten · {CurrentFurniturePage.Items.Count(item => !string.IsNullOrWhiteSpace(item.Title) || !string.IsNullOrWhiteSpace(item.Beco) || !string.IsNullOrWhiteSpace(item.Ref))} gepflegt";
+        FurnitureCountText.Text = $"  {tileCount} Etiketten · {CurrentFurniturePage.Items.Count(item => item.FieldValues.Values.Any(value => !string.IsNullOrWhiteSpace(value)))} gepflegt";
+    }
+
+    private void RefreshFurnitureFieldColumns()
+    {
+        foreach (var column in furnitureFieldColumns)
+            FurnitureGrid.Columns.Remove(column);
+        furnitureFieldColumns.Clear();
+
+        foreach (var field in data.FurniturePrintLayout.Fields)
+        {
+            DataGridColumn column;
+            if (field.Kind == "Photo")
+            {
+                var button = new FrameworkElementFactory(typeof(Button));
+                button.SetValue(Button.StyleProperty, FurnitureGrid.Resources["PhotoPickerButton"]);
+                button.SetValue(FrameworkElement.TagProperty, field.Id);
+                button.SetValue(FrameworkElement.ToolTipProperty, $"Foto für „{field.Name}“ auswählen");
+                button.AddHandler(Button.ClickEvent, new RoutedEventHandler(EditRowPhoto_Click));
+                var image = new FrameworkElementFactory(typeof(Image));
+                image.SetValue(FrameworkElement.WidthProperty, 42d);
+                image.SetValue(FrameworkElement.HeightProperty, 32d);
+                image.SetValue(Image.StretchProperty, System.Windows.Media.Stretch.Uniform);
+                image.SetBinding(Image.SourceProperty, new Binding($"PhotoPaths[{field.Id}]"));
+                button.AppendChild(image);
+                var template = new DataTemplate { VisualTree = button };
+                column = new DataGridTemplateColumn
+                {
+                    Header = field.Name,
+                    Width = new DataGridLength(82),
+                    CellTemplate = template
+                };
+            }
+            else
+            {
+                column = new DataGridTextColumn
+                {
+                    Header = field.Name,
+                    Binding = new Binding($"FieldValues[{field.Id}]")
+                    {
+                        UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+                    },
+                    Width = new DataGridLength(1, DataGridLengthUnitType.Star),
+                    ElementStyle = (Style)FurnitureGrid.Resources["CenteredCellText"],
+                    EditingElementStyle = (Style)FurnitureGrid.Resources["CenteredCellEditor"]
+                };
+            }
+
+            FurnitureGrid.Columns.Add(column);
+            furnitureFieldColumns.Add(column);
+        }
     }
 
     private void RefreshEmployeeRows()
@@ -198,7 +261,7 @@ public partial class MainWindow : Window
                 new FurnitureSearchResult(page, pageIndex, item, itemIndex)))
             .Where(result => Matches(query, result.Page.Name, result.Item.Title, result.Item.Beco,
                 result.Item.Ref, result.Item.Price, result.Item.Ek, result.Item.SalesPrice,
-                result.Item.RecommendedPrice))
+                string.Join(" ", result.Item.FieldValues.Values)))
             .Select(result => new SearchResultRow(result.Page, result.PageIndex, result.Item, result.ItemIndex,
                 $"{result.Page.Name} · Etikett {result.ItemIndex + 1} · {SearchSummary(result.Item)}"))
             .ToList();
@@ -247,21 +310,6 @@ public partial class MainWindow : Window
         UpdateFurniturePreviewHighlight();
     }
 
-    private void CodeTypeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (sender is not ComboBox combo ||
-            combo.DataContext is not CatalogGridRow row ||
-            !row.CanChooseBarcode ||
-            (!combo.IsKeyboardFocusWithin && !combo.IsMouseOver))
-            return;
-
-        Dispatcher.BeginInvoke(() =>
-        {
-            Save();
-            RefreshPrintPreview();
-        }, DispatcherPriority.Background);
-    }
-
     private void PreviewFurnitureItem_Clicked(CatalogItem item)
     {
 #if INTERNAL_DIAGNOSTICS
@@ -301,10 +349,10 @@ public partial class MainWindow : Window
         if (sender is not FrameworkElement { DataContext: CatalogGridRow row })
             return;
         FurnitureGrid.SelectedItem = row;
-        EditFurniturePhoto(row.Page, row.ItemIndex);
+        EditFurniturePhoto(row.Page, row.ItemIndex, (sender as FrameworkElement)?.Tag as string);
     }
 
-    private void EditFurniturePhoto(CatalogPage page, int itemIndex)
+    private void EditFurniturePhoto(CatalogPage page, int itemIndex, string? fieldId = null)
     {
         FurnitureGrid.CommitEdit(DataGridEditingUnit.Cell, true);
         FurnitureGrid.CommitEdit(DataGridEditingUnit.Row, true);
@@ -320,7 +368,18 @@ public partial class MainWindow : Window
         if (picker.ShowDialog() != true || picker.SelectedPhotoKey is null)
             return;
 
-        page.Items[itemIndex].Photo = picker.SelectedPhotoKey;
+        var item = page.Items[itemIndex];
+        if (!string.IsNullOrWhiteSpace(fieldId))
+        {
+            item.FieldValues[fieldId] = picker.SelectedPhotoKey;
+            var field = data.FurniturePrintLayout.Fields.FirstOrDefault(candidate => candidate.Id == fieldId);
+            if (field?.Source == "Photo")
+                item.Photo = picker.SelectedPhotoKey;
+        }
+        else
+        {
+            item.Photo = picker.SelectedPhotoKey;
+        }
         Save();
         RefreshFurnitureRows();
         RefreshPrintPreview();
@@ -537,12 +596,23 @@ public partial class MainWindow : Window
     private void EditFurnitureLayout_Click(object sender, RoutedEventArgs e)
     {
         var sample = FurnitureGrid.SelectedItem is CatalogGridRow selected ? selected.Item : CurrentFurniturePage.Items[0];
+        var oldFieldIds = data.FurniturePrintLayout.Fields.Select(field => field.Id).ToHashSet(StringComparer.Ordinal);
         var editor = new FurnitureLayoutWindow(data, sample, photoLibrary, data.FurniturePrintLayout) { Owner = this };
         if (editor.ShowDialog() != true)
             return;
 
         data.FurniturePrintLayout.CopyFrom(editor.Result);
+        var currentFields = data.FurniturePrintLayout.Fields;
+        var currentFieldIds = currentFields.Select(field => field.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var item in data.Pages.SelectMany(page => page.Items))
+        {
+            foreach (var removedId in oldFieldIds.Except(currentFieldIds))
+                item.FieldValues.Remove(removedId);
+            foreach (var field in currentFields)
+                item.FieldValues.TryAdd(field.Id, "");
+        }
         Save();
+        RefreshFurnitureRows();
         RefreshPrintPreview();
     }
 
@@ -552,18 +622,6 @@ public partial class MainWindow : Window
             Save();
             RefreshPrintPreview();
         }, DispatcherPriority.Background);
-
-    private void QuickServiceCheckBox_Changed(object sender, RoutedEventArgs e)
-    {
-        if (sender is not CheckBox checkBox ||
-            !checkBox.IsLoaded ||
-            checkBox.DataContext is not CatalogGridRow row)
-            return;
-
-        row.QuickService = checkBox.IsChecked == true;
-        Save();
-        RefreshPrintPreview();
-    }
 
     private void EmployeeGrid_CellEditEnding(object? sender, DataGridCellEditEndingEventArgs e) =>
         Dispatcher.BeginInvoke(() =>
@@ -963,8 +1021,8 @@ public partial class MainWindow : Window
             PrintService.SaveEmployeesPdf(this, data.EmployeePages, data.EmployeeLayout, "alle-filialen");
     }
 
-    private void QuickServiceQr_Click(object sender, RoutedEventArgs e) =>
-        PrintService.ExportQuickServiceQrZip(this, data);
+    private void QrBarcodeZip_Click(object sender, RoutedEventArgs e) =>
+        PrintService.ExportQrBarcodeZip(this, data);
 
     private void ChoosePhoto_Click(object sender, RoutedEventArgs e)
     {
@@ -1022,7 +1080,8 @@ public partial class MainWindow : Window
 
         if (EditorTabs.SelectedIndex == 0)
         {
-            PreviewDescription.Text = $"A4 {data.FurniturePrintLayout.Orientation.ToLowerInvariant()} · Etiketten · {CurrentFurniturePage.Name}";
+            var orientation = data.FurniturePrintLayout.Orientation == "Portrait" ? "Hochformat" : "Querformat";
+            PreviewDescription.Text = $"{data.FurniturePrintLayout.PaperFormat} · {orientation} · Etiketten · {CurrentFurniturePage.Name}";
             var selectedItem = (FurnitureGrid.SelectedItem as CatalogGridRow)?.Item;
             if (selectedItem is null || !CurrentFurniturePage.Items.Contains(selectedItem))
                 selectedItem = null;
@@ -1243,13 +1302,19 @@ public sealed class CatalogGridRow : INotifyPropertyChanged
 {
     private bool isHighlighted;
 
-    public CatalogGridRow(CatalogPage page, CatalogItem item, int itemIndex, int index, int pageIndex, string? photoPath)
+    public CatalogGridRow(
+        CatalogPage page,
+        CatalogItem item,
+        int itemIndex,
+        int index,
+        int pageIndex,
+        Dictionary<string, string?> photoPaths)
     {
         Page = page;
         Item = item;
         ItemIndex = itemIndex;
         PageIndex = pageIndex;
-        PhotoPath = photoPath;
+        PhotoPaths = photoPaths;
         Index = index;
     }
 
@@ -1257,7 +1322,9 @@ public sealed class CatalogGridRow : INotifyPropertyChanged
     public CatalogItem Item { get; }
     public int ItemIndex { get; }
     public int PageIndex { get; }
-    public string? PhotoPath { get; }
+    public Dictionary<string, string?> PhotoPaths { get; }
+    public Dictionary<string, string> FieldValues => Item.FieldValues;
+    public string? PhotoPath => PhotoPaths.Values.FirstOrDefault();
     public int Index { get; }
     public string Title { get => Item.Title; set => Item.Title = value ?? ""; }
     public string Beco { get => Item.Beco; set => Item.Beco = value ?? ""; }
@@ -1267,55 +1334,9 @@ public sealed class CatalogGridRow : INotifyPropertyChanged
         get => Item.Price;
         set => Item.Price = value ?? "";
     }
-    public string Ek
-    {
-        get => Item.Ek;
-        set
-        {
-            Item.Ek = value ?? "";
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RecommendedPrice)));
-        }
-    }
+    public string Ek { get => Item.Ek; set => Item.Ek = value ?? ""; }
     public string SalesPrice { get => Item.SalesPrice; set => Item.SalesPrice = value ?? ""; }
-    public string RecommendedPrice
-    {
-        get => !string.IsNullOrWhiteSpace(Item.RecommendedPrice)
-            ? Item.RecommendedPrice
-            : TryReadPrice(Item.Ek, out var cost)
-                ? RoundRecommendedPrice(cost * 2m).ToString("0.00", CultureInfo.CurrentCulture)
-                : "";
-        set
-        {
-            Item.RecommendedPrice = value ?? "";
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RecommendedPrice)));
-        }
-    }
 
-    private static decimal RoundRecommendedPrice(decimal price) => Math.Floor(price * 10m) / 10m;
-
-    public IReadOnlyList<string> CodeTypeOptions { get; } = ["QR-Code", "Barcode"];
-    public bool CanChooseBarcode => !Item.QuickService;
-    public string CodeType
-    {
-        get => Item.UseBarcode ? "Barcode" : "QR-Code";
-        set
-        {
-            Item.UseBarcode = !Item.QuickService && string.Equals(value, "Barcode", StringComparison.Ordinal);
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CodeType)));
-        }
-    }
-    public bool QuickService
-    {
-        get => Item.QuickService;
-        set
-        {
-            Item.QuickService = value;
-            if (value)
-                Item.UseBarcode = false;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanChooseBarcode)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CodeType)));
-        }
-    }
     public bool IsHighlighted
     {
         get => isHighlighted;
@@ -1340,10 +1361,6 @@ public sealed class CatalogGridRow : INotifyPropertyChanged
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
-
-    private static bool TryReadPrice(string value, out decimal price) =>
-        decimal.TryParse(value, NumberStyles.Number, CultureInfo.CurrentCulture, out price) ||
-        decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out price);
 
     private bool isDragTarget;
 }

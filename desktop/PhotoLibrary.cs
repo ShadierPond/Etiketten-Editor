@@ -112,8 +112,14 @@ public sealed class PhotoLibrary
         var references = CatalogData.GetPhotoReferences(data, key);
         foreach (var item in data.Pages.SelectMany(page => page.Items))
         {
+            item.FieldValues ??= [];
             if (string.Equals(item.Photo, key, StringComparison.Ordinal))
                 item.Photo = "";
+            foreach (var fieldId in item.FieldValues
+                         .Where(field => string.Equals(field.Value, key, StringComparison.Ordinal))
+                         .Select(field => field.Key)
+                         .ToList())
+                item.FieldValues[fieldId] = "";
         }
         data.Library.Remove(key);
         return references.Count;

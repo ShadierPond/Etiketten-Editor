@@ -232,7 +232,6 @@ public sealed partial class MainPage : Page
         ReferenceBox.Text = _selectedItem.Ref;
         PriceBox.Text = _selectedItem.Price;
         EkBox.Text = _selectedItem.Ek;
-        QuickServiceCheckBox.IsChecked = _selectedItem.QuickService;
         ItemPositionBox.Value = index + 1;
         LoadPhotoPreview();
         ItemSaveStatus.Text = "Änderungen werden automatisch gespeichert.";
@@ -249,7 +248,6 @@ public sealed partial class MainPage : Page
         ReferenceBox.Text = "";
         PriceBox.Text = "";
         EkBox.Text = "";
-        QuickServiceCheckBox.IsChecked = false;
         ItemPositionBox.Value = 1;
         PhotoPreview.Source = null;
         _isRefreshing = false;
@@ -283,14 +281,6 @@ public sealed partial class MainPage : Page
                 $"{index + 1:00}     {ItemSummary(item)}",
                 path is null ? null : new BitmapImage(new Uri(path)));
         }).ToList();
-
-    private void QuickServiceCheckBox_Changed(object sender, RoutedEventArgs e)
-    {
-        if (_isRefreshing || _selectedItem is null)
-            return;
-        _selectedItem.QuickService = QuickServiceCheckBox.IsChecked == true;
-        SaveCatalog();
-    }
 
     private void ItemPosition_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
     {
@@ -1013,20 +1003,22 @@ public sealed partial class MainPage : Page
         await dialogOperation;
     }
 
-    private async void QuickServiceQrButton_Click(object sender, RoutedEventArgs e)
+    private async void QrCodeZipButton_Click(object sender, RoutedEventArgs e)
     {
+        var layout = _catalog.FurniturePrintLayout;
+        layout.Normalize();
         var products = _catalog.Pages.SelectMany(page => page.Items)
-            .Where(item => item.QuickService && !string.IsNullOrWhiteSpace(item.Title))
+            .Where(item => !string.IsNullOrWhiteSpace(A4HtmlExporter.GetQrContent(item, layout)))
             .ToList();
         if (products.Count == 0)
         {
-            ShowStatus("Es gibt keine Quick-Service-Artikel mit Beschreibung.", InfoBarSeverity.Warning);
+            ShowStatus("Es wurden keine Artikel mit einem QR-/Barcodewert gefunden.", InfoBarSeverity.Warning);
             return;
         }
 
         try
         {
-            var picker = new FileSavePicker { SuggestedFileName = "quick-service-qr-codes.zip" };
+            var picker = new FileSavePicker { SuggestedFileName = "etiketten-codes.zip" };
             picker.FileTypeChoices.Add("ZIP-Datei", [".zip"]);
             InitializeWithWindow.Initialize(picker, App.WindowHandle);
             var file = await picker.PickSaveFileAsync();
@@ -1038,7 +1030,7 @@ public sealed partial class MainPage : Page
             var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in products)
             {
-                var content = string.Join(' ', new[] { item.Title.Trim(), BecoText(item.Beco) }.Where(value => value.Length > 0));
+                var content = A4HtmlExporter.GetQrContent(item, layout);
                 var baseName = SafeFileName(content);
                 counts.TryGetValue(baseName, out var count);
                 counts[baseName] = ++count;
@@ -1047,7 +1039,7 @@ public sealed partial class MainPage : Page
                 var bytes = A4HtmlExporter.CreateQrBytes(content);
                 await stream.WriteAsync(bytes);
             }
-            ShowStatus($"{products.Count} Quick-Service-QR-Codes wurden als ZIP exportiert.");
+            ShowStatus($"{products.Count} QR-/Barcode-Codes wurden als ZIP exportiert.");
         }
         catch (Exception ex)
         {
@@ -1262,16 +1254,6 @@ public sealed partial class MainPage : Page
     private static string PhotoReferenceTitle(PhotoReference reference) =>
         string.IsNullOrWhiteSpace(reference.Title) ? "(ohne Namen)" : reference.Title.Trim();
 
-    private static string BecoText(string value)
-    {
-        var beco = value.Trim();
-        if (beco.Length == 0)
-            return "";
-        return beco.StartsWith("BECO", StringComparison.OrdinalIgnoreCase)
-            ? "BECO" + beco[4..].Trim()
-            : "BECO" + beco;
-    }
-
     private static string SafeFileName(string value)
     {
         var invalid = Path.GetInvalidFileNameChars();
@@ -1279,7 +1261,7 @@ public sealed partial class MainPage : Page
             .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         if (name.Length > 100)
             name = name[..100].Trim();
-        return string.IsNullOrWhiteSpace(name) ? "Quick-Service" : name;
+        return string.IsNullOrWhiteSpace(name) ? "Code" : name;
     }
 
     private sealed record SearchHit(

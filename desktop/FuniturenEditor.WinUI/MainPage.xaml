@@ -339,7 +339,6 @@
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
                                         <StackPanel Grid.ColumnSpan="2" Spacing="4">
                                             <TextBlock x:Name="ItemHeading" Style="{ThemeResource SubtitleTextBlockStyle}" Text="Position auswählen" />
@@ -412,16 +411,8 @@
                                             CornerRadius="8">
                                             <Image x:Name="PhotoPreview" Stretch="Uniform" />
                                         </Border>
-                                        <CheckBox
-                                            x:Name="QuickServiceCheckBox"
-                                            Grid.Row="5"
-                                            Grid.ColumnSpan="2"
-                                            AutomationProperties.AutomationId="ItemQuickService"
-                                            Content="Quick-Service-Artikel (QR-Code im Etikett)"
-                                            Checked="QuickServiceCheckBox_Changed"
-                                            Unchecked="QuickServiceCheckBox_Changed" />
                                         <StackPanel
-                                            Grid.Row="6"
+                                            Grid.Row="5"
                                             Grid.ColumnSpan="2"
                                             Orientation="Horizontal"
                                             VerticalAlignment="Center"
@@ -723,10 +714,10 @@
                                     <Button
                                         Grid.Row="4"
                                         Grid.ColumnSpan="2"
-                                        AutomationProperties.AutomationId="ExportQuickServiceQr"
+                                        AutomationProperties.AutomationId="ExportQrBarcode"
                                         HorizontalAlignment="Stretch"
-                                        Click="QuickServiceQrButton_Click"
-                                        Content="Quick-Service-QR-Codes als ZIP exportieren" />
+                                        Click="QrCodeZipButton_Click"
+                                        Content="QR-Codes als ZIP exportieren" />
                                     <Button
                                         Grid.Row="5"
                                         Grid.ColumnSpan="2"

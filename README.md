@@ -20,8 +20,10 @@ Das Repository enthält zwei Oberflächen:
 - Position, Größe, Schrift, Drehung und Ersatztext für fehlende BECO-Nummern
   konfigurieren
 - Druckvorschau für eine Kategorie oder den gesamten Katalog
-- PDF-Export und A4-Druck im Hoch- oder Querformat mit konfigurierbaren Spalten, Abständen und Etikettenanzahl
-- Dynamische Etikettenfelder für Text, Foto, Preis, QR-Code und Barcode
+- PDF-Export und Druck in DIN A3, A4, A5, A6, Letter und Legal, jeweils hoch oder quer, mit konfigurierbaren Spalten, Abständen und Etikettenanzahl
+- Dynamische Etikettenfelder für Text, Zahl mit frei wählbarem Suffix, Foto,
+  QR-Code und Barcode; die Felder bestimmen zugleich die Spalten in der
+  Kategorieliste
 - Mitarbeiterkarten und QR-Codes pro Filiale verwalten
 - JSON-Import und -Export einschließlich eingebetteter Fotos
 - automatische lokale Speicherung mit SQLite

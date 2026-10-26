@@ -44,9 +44,7 @@ internal static class A4HtmlExporter
                     .Append(Cm(x)).Append("cm;top:").Append(Cm(y)).Append("cm;width:")
                     .Append(Cm(width)).Append("cm;height:").Append(Cm(height)).Append("cm\">");
                 AppendPhoto(html, layout.Photo, photos.GetPhotoPath(catalog, item.Photo));
-                var qrContent = item.QuickService
-                    ? string.Join(' ', new[] { item.Title.Trim(), BecoText(item.Beco) }.Where(text => text.Length > 0))
-                    : item.Ref.Trim();
+                var qrContent = GetQrContent(item, layout);
                 if (!string.IsNullOrWhiteSpace(qrContent))
                     AppendImage(html, layout.Qr, "data:image/png;base64," + Convert.ToBase64String(CreateQrBytes(qrContent)), "QR code");
                 AppendText(html, layout.Title, item.Title);
@@ -113,6 +111,33 @@ internal static class A4HtmlExporter
         using var generator = new QRCodeGenerator();
         using var qrData = generator.CreateQrCode(content, QRCodeGenerator.ECCLevel.Q);
         return new PngByteQRCode(qrData).GetGraphic(8);
+    }
+
+    public static string GetQrContent(CatalogItem item, FurniturePrintLayout layout)
+    {
+        if (!layout.QrCode.Enabled)
+            return "";
+        var value = GetSourceValue(item, layout, layout.QrCode.SourceField);
+        if (value.Length == 0 && layout.QrCode.UseFallback)
+            value = GetSourceValue(item, layout, layout.QrCode.FallbackField);
+        return value.Length == 0 ? "" : layout.QrCode.Prefix + value + layout.QrCode.Suffix;
+    }
+
+    private static string GetSourceValue(CatalogItem item, FurniturePrintLayout layout, string fieldId)
+    {
+        if (item.FieldValues.TryGetValue(fieldId, out var value))
+            return value.Trim();
+        var source = layout.Fields.FirstOrDefault(field => field.Id == fieldId)?.Source;
+        return source switch
+        {
+            "Title" => item.Title.Trim(),
+            "Beco" => item.Beco.Trim(),
+            "Ref" => item.Ref.Trim(),
+            "Price" => item.Price.Trim(),
+            "SalesPrice" => item.SalesPrice.Trim(),
+            "Ek" => item.Ek.Trim(),
+            _ => ""
+        };
     }
 
     private static string StartHtml(

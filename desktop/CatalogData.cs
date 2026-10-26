@@ -5,7 +5,7 @@ namespace FuniturenEditor.Desktop;
 
 public sealed class CatalogData
 {
-    public int SchemaVersion { get; set; } = 2;
+    public int SchemaVersion { get; set; } = 3;
     public List<CatalogPage> Pages { get; set; } = [];
     public Dictionary<string, string> Library { get; set; } = [];
     public List<EmployeePage> EmployeePages { get; set; } = [];
@@ -22,13 +22,25 @@ public sealed class CatalogData
     public static IReadOnlyList<PhotoReference> GetPhotoReferences(CatalogData catalog, string key) =>
         catalog.Pages
             .SelectMany(page => page.Items.Select((item, index) =>
-                new PhotoReference(page.Name, item.Title, index + 1, item.Photo)))
-            .Where(reference => string.Equals(reference.PhotoKey, key, StringComparison.Ordinal))
+            {
+                var photoKeys = (item.FieldValues ?? [])
+                    .Where(fieldValue => catalog.FurniturePrintLayout.Fields.Any(field =>
+                        field.Kind == "Photo" && field.Id == fieldValue.Key))
+                    .Select(fieldValue => fieldValue.Value)
+                    .Append(item.Photo)
+                    .Where(photoKey => !string.IsNullOrWhiteSpace(photoKey))
+                    .Distinct(StringComparer.Ordinal);
+                return photoKeys.Contains(key, StringComparer.Ordinal)
+                    ? new PhotoReference(page.Name, item.Title, index + 1, key)
+                    : null;
+            }))
+            .Where(reference => reference is not null)
+            .Select(reference => reference!)
             .ToList();
 
     public void Normalize()
     {
-        SchemaVersion = Math.Max(SchemaVersion, 2);
+        SchemaVersion = Math.Max(SchemaVersion, 3);
         Pages ??= [];
         EmployeePages ??= [];
         FurniturePrintLayout ??= new FurniturePrintLayout();
@@ -63,8 +75,25 @@ public sealed class CatalogData
                 item.Ek ??= "";
                 item.SalesPrice ??= "";
                 item.RecommendedPrice ??= "";
-                if (item.QuickService)
-                    item.UseBarcode = false;
+                item.FieldValues ??= [];
+                foreach (var field in FurniturePrintLayout.Fields)
+                {
+                    if (item.FieldValues.ContainsKey(field.Id))
+                        continue;
+                    var legacyValue = field.Source switch
+                    {
+                        "Title" => item.Title,
+                        "Beco" => item.Beco,
+                        "Ref" => item.Ref,
+                        "Photo" => item.Photo,
+                        "Price" => item.Price,
+                        "SalesPrice" => item.SalesPrice,
+                        "Ek" => item.Ek,
+                        "RecommendedPrice" => item.RecommendedPrice,
+                        _ => ""
+                    };
+                    item.FieldValues[field.Id] = legacyValue ?? "";
+                }
             }
         }
 
@@ -119,8 +148,7 @@ public sealed class CatalogItem
     public string Ek { get; set; } = "";
     public string SalesPrice { get; set; } = "";
     public string RecommendedPrice { get; set; } = "";
-    public bool QuickService { get; set; }
-    public bool UseBarcode { get; set; }
+    public Dictionary<string, string> FieldValues { get; set; } = [];
     [JsonExtensionData] public Dictionary<string, JsonElement>? AdditionalData { get; set; }
 }
 
@@ -153,6 +181,7 @@ public sealed class FurniturePrintLayout
 {
     public double CellWidthCm { get; set; } = 3.5;
     public double CellHeightCm { get; set; } = 3.5;
+    public string PaperFormat { get; set; } = "A4";
     public string Orientation { get; set; } = "Landscape";
     public double HorizontalGapCm { get; set; } = 0.2;
     public double VerticalGapCm { get; set; } = 0.2;
@@ -173,6 +202,11 @@ public sealed class FurniturePrintLayout
     {
         CellWidthCm = Math.Clamp(double.IsFinite(CellWidthCm) ? CellWidthCm : 3.5, 2, 5);
         CellHeightCm = Math.Clamp(double.IsFinite(CellHeightCm) ? CellHeightCm : 3.5, 2, 5);
+        PaperFormat = PaperFormat switch
+        {
+            "A3" or "A4" or "A5" or "A6" or "Letter" or "Legal" => PaperFormat,
+            _ => "A4"
+        };
         Orientation = string.Equals(Orientation, "Portrait", StringComparison.OrdinalIgnoreCase)
             ? "Portrait"
             : "Landscape";
@@ -199,13 +233,41 @@ public sealed class FurniturePrintLayout
                 Title.CopyWith("Beschreibung", "Text", "Title"),
                 Beco.CopyWith("BECO", "Text", "Beco"),
                 Ref.CopyWith("Referenznummer", "Text", "Ref"),
-                Price.CopyWith("VK-Preis", "Price", "Price"),
-                Ek.CopyWith("EK", "Price", "Ek")
+                Price.CopyWith("VK-Preis", "Number", "Price"),
+                Ek.CopyWith("EK", "Number", "Ek")
             ];
         }
         foreach (var element in Fields)
             element.Normalize(CellWidthCm, CellHeightCm);
+        QrCode.SourceField = ResolveFieldReference(QrCode.SourceField);
+        QrCode.FallbackField = ResolveFieldReference(QrCode.FallbackField);
+        foreach (var field in Fields.Where(field => field.Kind == "Number"))
+        {
+            if (string.IsNullOrEmpty(field.Suffix) && field.Source is "Price" or "Ek")
+                field.Suffix = " €";
+        }
     }
+
+    private string ResolveFieldReference(string reference)
+    {
+        if (Fields.Any(field => field.Id == reference))
+            return reference;
+        var matchingSource = Fields.FirstOrDefault(field => field.Source == reference);
+        return matchingSource?.Id ??
+               Fields.FirstOrDefault(field => field.Kind is "Text" or "Number")?.Id ??
+               Fields.First().Id;
+    }
+
+    public static (double WidthCm, double HeightCm) GetPaperDimensionsCm(string paperFormat) =>
+        paperFormat switch
+        {
+            "A3" => (29.7, 42),
+            "A5" => (14.8, 21),
+            "A6" => (10.5, 14.8),
+            "Letter" => (21.59, 27.94),
+            "Legal" => (21.59, 35.56),
+            _ => (21, 29.7)
+        };
 
     [JsonIgnore]
     public IReadOnlyList<PrintElementLayout> Elements => Fields;
@@ -214,6 +276,7 @@ public sealed class FurniturePrintLayout
     {
         CellWidthCm = CellWidthCm,
         CellHeightCm = CellHeightCm,
+        PaperFormat = PaperFormat,
         Orientation = Orientation,
         HorizontalGapCm = HorizontalGapCm,
         VerticalGapCm = VerticalGapCm,
@@ -235,6 +298,7 @@ public sealed class FurniturePrintLayout
     {
         CellWidthCm = other.CellWidthCm;
         CellHeightCm = other.CellHeightCm;
+        PaperFormat = other.PaperFormat;
         Orientation = other.Orientation;
         HorizontalGapCm = other.HorizontalGapCm;
         VerticalGapCm = other.VerticalGapCm;
@@ -289,6 +353,7 @@ public sealed class PrintElementLayout
     public string Kind { get; set; } = "Text";
     public string Source { get; set; } = "Title";
     public string StaticText { get; set; } = "";
+    public string Suffix { get; set; } = "";
     public double X { get; set; }
     public double Y { get; set; }
     public double Width { get; set; } = 1;
@@ -305,6 +370,7 @@ public sealed class PrintElementLayout
         Kind = Kind,
         Source = Source,
         StaticText = StaticText,
+        Suffix = Suffix,
         X = X,
         Y = Y,
         Width = Width,
@@ -330,11 +396,13 @@ public sealed class PrintElementLayout
         Name = string.IsNullOrWhiteSpace(Name) ? "Feld" : Name.Trim();
         Kind = Kind switch
         {
-            "Photo" or "Qr" or "Barcode" or "Price" => Kind,
+            "Photo" or "Qr" or "Barcode" or "Number" => Kind,
+            "Price" => "Number",
             _ => "Text"
         };
         Source = string.IsNullOrWhiteSpace(Source) ? "Title" : Source.Trim();
         StaticText ??= "";
+        Suffix ??= "";
         X = Math.Clamp(double.IsFinite(X) ? X : 0, 0, cellWidth);
         Y = Math.Clamp(double.IsFinite(Y) ? Y : 0, 0, cellHeight);
         Width = Math.Clamp(double.IsFinite(Width) ? Width : 1, 0, cellWidth - X);

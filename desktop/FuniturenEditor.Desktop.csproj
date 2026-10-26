@@ -4,7 +4,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <Configurations>Debug;Release;InternalDebug</Configurations>
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
     <Company>Tariq Alsalem</Company>
     <Authors>Tariq Alsalem</Authors>
     <Product>Etiketten Editor</Product>
