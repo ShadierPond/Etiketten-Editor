@@ -5,7 +5,8 @@ namespace FuniturenEditor.Desktop;
 
 public sealed class CatalogData
 {
-    public int SchemaVersion { get; set; } = 3;
+    public int SchemaVersion { get; set; } = 4;
+    public List<EditorCatalog> Catalogs { get; set; } = [];
     public List<CatalogPage> Pages { get; set; } = [];
     public Dictionary<string, string> Library { get; set; } = [];
     public List<EmployeePage> EmployeePages { get; set; } = [];
@@ -13,18 +14,23 @@ public sealed class CatalogData
     public FurniturePrintLayout FurniturePrintLayout { get; set; } = new();
     [JsonExtensionData] public Dictionary<string, JsonElement>? AdditionalData { get; set; }
 
-    public static CatalogData CreateDefault() => new()
+    public static CatalogData CreateDefault()
     {
-        Pages = [CatalogPage.Create("Kategorie 1")],
-        EmployeePages = [new EmployeePage { Name = "Filiale 1" }]
-    };
+        var catalog = new CatalogData
+        {
+            Pages = [CatalogPage.Create("Liste 1")],
+            EmployeePages = [new EmployeePage { Name = "Filiale 1" }]
+        };
+        catalog.Normalize();
+        return catalog;
+    }
 
     public static IReadOnlyList<PhotoReference> GetPhotoReferences(CatalogData catalog, string key) =>
-        catalog.Pages
-            .SelectMany(page => page.Items.Select((item, index) =>
+        catalog.Catalogs
+            .SelectMany(definition => definition.Lists.SelectMany(page => page.Items.Select((item, index) =>
             {
                 var photoKeys = (item.FieldValues ?? [])
-                    .Where(fieldValue => catalog.FurniturePrintLayout.Fields.Any(field =>
+                    .Where(fieldValue => definition.Layout.Fields.Any(field =>
                         field.Kind == "Photo" && field.Id == fieldValue.Key))
                     .Select(fieldValue => fieldValue.Value)
                     .Append(item.Photo)
@@ -33,14 +39,15 @@ public sealed class CatalogData
                 return photoKeys.Contains(key, StringComparer.Ordinal)
                     ? new PhotoReference(page.Name, item.Title, index + 1, key)
                     : null;
-            }))
+            })))
             .Where(reference => reference is not null)
             .Select(reference => reference!)
             .ToList();
 
     public void Normalize()
     {
-        SchemaVersion = Math.Max(SchemaVersion, 3);
+        SchemaVersion = Math.Max(SchemaVersion, 4);
+        Catalogs ??= [];
         Pages ??= [];
         EmployeePages ??= [];
         FurniturePrintLayout ??= new FurniturePrintLayout();
@@ -123,18 +130,175 @@ public sealed class CatalogData
 
         Library ??= [];
         EmployeeLayout ??= new EmployeeLayout();
+
+        if (Catalogs.Count == 0)
+            MigrateLegacyCatalogs();
+
+        foreach (var catalog in Catalogs)
+        {
+            catalog.Id = string.IsNullOrWhiteSpace(catalog.Id) ? Guid.NewGuid().ToString("N") : catalog.Id.Trim();
+            catalog.Name = string.IsNullOrWhiteSpace(catalog.Name) ? "Neuer Katalog" : catalog.Name.Trim();
+            catalog.Layout ??= new FurniturePrintLayout();
+            catalog.Layout.Normalize();
+            catalog.Lists ??= [];
+            catalog.Lists.RemoveAll(list => list is null);
+            if (catalog.Lists.Count == 0)
+                catalog.Lists.Add(CatalogPage.Create("Liste 1"));
+            foreach (var list in catalog.Lists)
+            {
+                list.Name = string.IsNullOrWhiteSpace(list.Name) ? "Liste" : list.Name.Trim();
+                list.Items ??= [];
+                list.Items.RemoveAll(item => item is null);
+                while (list.Items.Count < catalog.Layout.TileCount)
+                    list.Items.Add(new CatalogItem());
+                foreach (var item in list.Items)
+                {
+                    item.Title ??= "";
+                    item.Beco ??= "";
+                    item.Ref ??= "";
+                    item.Photo ??= "";
+                    item.Price ??= "";
+                    item.Ek ??= "";
+                    item.SalesPrice ??= "";
+                    item.RecommendedPrice ??= "";
+                    item.FieldValues ??= [];
+                    foreach (var field in catalog.Layout.Fields)
+                    {
+                        if (!item.FieldValues.ContainsKey(field.Id))
+                        {
+                            item.FieldValues[field.Id] = field.Source switch
+                            {
+                                "Title" => item.Title,
+                                "Beco" => item.Beco,
+                                "Ref" => item.Ref,
+                                "Photo" => item.Photo,
+                                "Price" => item.Price,
+                                "SalesPrice" => item.SalesPrice,
+                                "Ek" => item.Ek,
+                                "RecommendedPrice" => item.RecommendedPrice,
+                                _ => ""
+                            };
+                        }
+                    }
+                }
+            }
+        }
+
+        SyncLegacyCatalogs();
     }
+
+    private void MigrateLegacyCatalogs()
+    {
+        Catalogs =
+        [
+            new EditorCatalog
+            {
+                Id = "labels",
+                Name = "Etiketten",
+                Lists = Pages,
+                Layout = FurniturePrintLayout.Copy()
+            },
+            CreateEmployeeCatalog(EmployeePages)
+        ];
+    }
+
+    private static EditorCatalog CreateEmployeeCatalog(IEnumerable<EmployeePage> employeePages)
+    {
+        var layout = new FurniturePrintLayout
+        {
+            Fields =
+            [
+                new PrintElementLayout
+                {
+                    Id = "employee-name", Name = "Name", Kind = "Text", Source = "Title",
+                    X = 0.15, Y = 0.4, Width = 3.2, Height = 0.65, FontSize = 8, Bold = true
+                },
+                new PrintElementLayout
+                {
+                    Id = "employee-number", Name = "Mitarbeiternummer", Kind = "Text", Source = "Ref",
+                    X = 0.15, Y = 1.15, Width = 2.2, Height = 0.4, FontSize = 6
+                },
+                new PrintElementLayout
+                {
+                    Id = "employee-code", Name = "Anmeldecode", Kind = "Text", Source = "Custom",
+                    X = 0.15, Y = 1.6, Width = 2.2, Height = 0.4, FontSize = 6
+                },
+                new PrintElementLayout
+                {
+                    Id = "employee-qr", Name = "QR-Code", Kind = "Qr", Source = "Custom",
+                    X = 2.35, Y = 0.45, Width = 1, Height = 1, FontSize = 6
+                }
+            ],
+            CellWidthCm = 4,
+            CellHeightCm = 2.5,
+            Columns = 4,
+            TileCount = 15,
+            Orientation = "Portrait"
+        };
+        layout.QrCode.SourceField = "employee-code";
+        layout.QrCode.FallbackField = "employee-number";
+        layout.QrCode.UseFallback = true;
+        layout.Normalize();
+
+        return new EditorCatalog
+        {
+            Id = "employees",
+            Name = "Mitarbeiter",
+            Layout = layout,
+            Lists = employeePages.Select(branch => new CatalogPage
+            {
+                Name = branch.Name,
+                Items = branch.Employees.Select(employee =>
+                {
+                    var item = new CatalogItem { Title = employee.Name, Ref = employee.Number };
+                    item.FieldValues["employee-name"] = employee.Name;
+                    item.FieldValues["employee-number"] = employee.Number;
+                    item.FieldValues["employee-code"] = employee.Code;
+                    item.FieldValues["employee-qr"] = "";
+                    return item;
+                }).ToList()
+            }).ToList()
+        };
+    }
+
+    private void SyncLegacyCatalogs()
+    {
+        var labels = Catalogs.FirstOrDefault(catalog => catalog.Id == "labels");
+        if (labels is not null)
+            FurniturePrintLayout = labels.Layout.Copy();
+        Pages = labels?.Lists ?? [];
+
+        var employees = Catalogs.FirstOrDefault(catalog => catalog.Id == "employees");
+        EmployeePages = employees?.Lists.Select(list => new EmployeePage
+            {
+                Name = list.Name,
+                Employees = list.Items.Select(item => new Employee
+                {
+                    Name = item.FieldValues.GetValueOrDefault("employee-name", item.Title),
+                    Number = item.FieldValues.GetValueOrDefault("employee-number", item.Ref),
+                    Code = item.FieldValues.GetValueOrDefault("employee-code", "")
+                }).ToList()
+            }).ToList() ?? [];
+    }
+}
+
+public sealed class EditorCatalog
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = "Katalog";
+    public List<CatalogPage> Lists { get; set; } = [];
+    public FurniturePrintLayout Layout { get; set; } = new();
 }
 
 public sealed class CatalogPage
 {
-    public string Name { get; set; } = "Kategorie";
+    public string Name { get; set; } = "Liste";
     public List<CatalogItem> Items { get; set; } = [];
 
     public static CatalogPage Create(string name) => new()
     {
         Name = name,
-        Items = Enumerable.Range(0, 15).Select(_ => new CatalogItem()).ToList()
+        Items = []
     };
 }
 

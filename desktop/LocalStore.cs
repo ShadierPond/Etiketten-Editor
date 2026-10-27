@@ -81,6 +81,25 @@ public sealed class LocalStore
         command.ExecuteNonQuery();
     }
 
+    public string BackupAndResetCatalog(string backupJson)
+    {
+        var backupDirectory = Path.Combine(Path.GetDirectoryName(DatabasePath)!, "Backups");
+        Directory.CreateDirectory(backupDirectory);
+        var backupPath = Path.Combine(
+            backupDirectory,
+            $"funituren-backup-{DateTime.Now:yyyyMMdd-HHmmss-fff}.json");
+        File.WriteAllText(backupPath, backupJson);
+
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "DELETE FROM Catalog WHERE Id = 1;";
+        command.ExecuteNonQuery();
+        transaction.Commit();
+        return backupPath;
+    }
+
     private SqliteConnection OpenConnection()
     {
         var connection = new SqliteConnection(connectionString);

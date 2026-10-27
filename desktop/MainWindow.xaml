@@ -5,6 +5,57 @@
         Title="Etiketten Editor" Height="820" Width="1500"
         MinHeight="600" MinWidth="900" WindowStartupLocation="CenterScreen"
         Background="#F2F5F8">
+    <Window.Resources>
+        <Style x:Key="ModernContextMenu" TargetType="ContextMenu">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#D8E0E8" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="4" />
+            <Setter Property="HasDropShadow" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}"
+                                CornerRadius="8"
+                                SnapsToDevicePixels="True">
+                            <ItemsPresenter KeyboardNavigation.TabNavigation="Cycle" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ModernMenuItem" TargetType="MenuItem">
+            <Setter Property="Foreground" Value="#18344F" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="12,9" />
+            <Setter Property="MinWidth" Value="210" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="MenuItemBorder"
+                                Background="Transparent"
+                                CornerRadius="5"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header"
+                                              RecognizesAccessKey="True"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="MenuItemBorder" Property="Background" Value="#E8F1FA" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#8A98A6" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="#18344F" Padding="22,14">
             <Grid>
@@ -26,7 +77,8 @@
                         <TextBlock Text="Lokaler Arbeitsbereich" Foreground="#B8C7D6" FontSize="12" />
                     </StackPanel>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <WrapPanel Grid.Row="1" Grid.ColumnSpan="2" HorizontalAlignment="Right"
+                           VerticalAlignment="Center" Margin="0,10,0,0">
                     <Button Content="Nach Updates suchen" Click="CheckUpdates_Click" />
                     <Button Click="Import_Click">
                         <StackPanel Orientation="Horizontal">
@@ -58,9 +110,9 @@
                             </StackPanel>
                         </Button.Content>
                         <Button.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="Aktuelle Kategorie" Click="PrintCurrent_Click" />
-                                <MenuItem Header="Alle Kategorien" Click="PrintAll_Click" />
+                            <ContextMenu Style="{StaticResource ModernContextMenu}">
+                                <MenuItem Style="{StaticResource ModernMenuItem}" Header="Aktuelle Kategorie" Click="PrintCurrent_Click" />
+                                <MenuItem Style="{StaticResource ModernMenuItem}" Header="Alle Kategorien" Click="PrintAll_Click" />
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
@@ -73,9 +125,9 @@
                             </StackPanel>
                         </Button.Content>
                         <Button.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="Aktuelle Kategorie" Click="SaveCurrentAsPdf_Click" />
-                                <MenuItem Header="Alle Kategorien" Click="SaveAllAsPdf_Click" />
+                            <ContextMenu Style="{StaticResource ModernContextMenu}">
+                                <MenuItem Style="{StaticResource ModernMenuItem}" Header="Aktuelle Kategorie" Click="SaveCurrentAsPdf_Click" />
+                                <MenuItem Style="{StaticResource ModernMenuItem}" Header="Alle Kategorien" Click="SaveAllAsPdf_Click" />
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
@@ -86,7 +138,16 @@
                             <TextBlock Text="QR-/Barcode-ZIP" />
                         </StackPanel>
                     </Button>
-                </StackPanel>
+                    <Button Click="ShowActionMenu_Click">
+                        <Button.Content>Weitere Einstellungen ▾</Button.Content>
+                        <Button.ContextMenu>
+                            <ContextMenu Style="{StaticResource ModernContextMenu}">
+                                <MenuItem Style="{StaticResource ModernMenuItem}" Header="Auf Werkseinstellungen zurücksetzen"
+                                          Click="ResetToFactorySettings_Click" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                </WrapPanel>
             </Grid>
         </Border>
 
@@ -113,7 +174,7 @@
                              GotKeyboardFocus="SearchBox_GotKeyboardFocus"
                              PreviewMouseLeftButtonDown="SearchBox_PreviewMouseLeftButtonDown"
                              Padding="34,6,10,6"
-                             ToolTip="Alle Kategorien nach Beschreibung, BECO, Referenz oder Preis durchsuchen" />
+                             ToolTip="Alle Kataloge und Listen durchsuchen" />
                     <svgc:SvgViewbox Grid.Row="0" Grid.Column="1"
                                       Width="16" Height="16"
                                       Margin="11,0,0,0"
@@ -136,110 +197,64 @@
                     <ColumnDefinition x:Name="PreviewSplitterColumn" Width="6" />
                     <ColumnDefinition x:Name="PreviewColumn" Width="2*" />
                 </Grid.ColumnDefinitions>
-                <TabControl Grid.Column="0" x:Name="EditorTabs" SelectionChanged="EditorTabs_SelectionChanged"
-                            Background="Transparent" BorderThickness="0">
-                    <TabControl.Template>
-                        <ControlTemplate TargetType="TabControl">
-                            <Grid KeyboardNavigation.TabNavigation="Local"
-                                  SnapsToDevicePixels="True">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="*" />
-                                </Grid.RowDefinitions>
-                                <TabPanel x:Name="HeaderPanel"
-                                          IsItemsHost="True"
-                                          Margin="12,0,0,0"
-                                          KeyboardNavigation.TabIndex="1" />
-                                <ContentPresenter x:Name="PART_SelectedContentHost"
-                                                  Grid.Row="1"
-                                                  Margin="0"
-                                                  ContentSource="SelectedContent"
-                                                  KeyboardNavigation.TabIndex="2" />
-                            </Grid>
-                        </ControlTemplate>
-                    </TabControl.Template>
-                    <TabControl.Resources>
-                        <Style TargetType="TabItem">
-                            <Setter Property="Foreground" Value="#526B83" />
-                            <Setter Property="FontWeight" Value="SemiBold" />
-                            <Setter Property="Padding" Value="16,9" />
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="TabItem">
-                                        <Border x:Name="TabBorder"
-                                                Padding="{TemplateBinding Padding}"
-                                                Background="Transparent"
-                                                BorderBrush="Transparent"
-                                                BorderThickness="1,1,1,0"
-                                                CornerRadius="8,8,0,0"
-                                                SnapsToDevicePixels="True">
-                                            <ContentPresenter HorizontalAlignment="Center"
-                                                              VerticalAlignment="Center"
-                                                              ContentSource="Header"
-                                                              RecognizesAccessKey="True" />
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="TabBorder" Property="Background" Value="#E8F1FA" />
-                                                <Setter Property="Foreground" Value="#244A73" />
-                                            </Trigger>
-                                            <Trigger Property="IsSelected" Value="True">
-                                                <Setter TargetName="TabBorder" Property="Background" Value="White" />
-                                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#D8E0E8" />
-                                                <Setter Property="Foreground" Value="#18344F" />
-                                            </Trigger>
-                                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#244A73" />
-                                            </Trigger>
-                                            <Trigger Property="IsEnabled" Value="False">
-                                                <Setter Property="Foreground" Value="#9AA8B5" />
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </TabControl.Resources>
-                <TabItem Header="Etiketten">
-                    <Border Background="White" BorderBrush="#D8E0E8" BorderThickness="1"
-                            CornerRadius="8" Padding="18" Margin="0">
-                        <DockPanel>
+                <Border Grid.Column="0" Background="White" BorderBrush="#D8E0E8" BorderThickness="1"
+                        CornerRadius="8" Padding="18" Margin="0">
+                    <DockPanel>
                             <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
-                                <TextBlock Text="Etiketten-Katalog" FontSize="22" FontWeight="SemiBold"
+                                <TextBlock x:Name="CatalogHeading" Text="Katalog" FontSize="22" FontWeight="SemiBold"
                                            Foreground="#172B42" />
-                                <TextBlock Text="Artikel und Kategorien direkt in der lokalen Datenbank pflegen."
+                                <TextBlock x:Name="CatalogDescription" Text="Einträge und Listen direkt in der lokalen Datenbank pflegen."
                                            Foreground="#657586" Margin="0,4,0,14" />
                                 <TextBlock x:Name="FurnitureCountText" Foreground="#657586" Margin="0,0,0,10" />
-                                <DockPanel>
-                                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox x:Name="CatalogBox" Grid.Column="0" Width="220"
+                                              VerticalContentAlignment="Center"
+                                              SelectionChanged="CatalogBox_SelectionChanged" />
+                                    <WrapPanel Grid.Column="1" HorizontalAlignment="Right"
+                                               VerticalAlignment="Center">
                                         <Button Content="Vorlage" Click="EditFurnitureLayout_Click" />
+                                        <Button Content="Katalog hinzufügen" Click="AddCatalog_Click" />
+                                        <Button Content="Katalog umbenennen" Click="RenameCatalog_Click" />
+                                        <Button Content="Katalog löschen" Click="DeleteCatalog_Click" />
+                                    </WrapPanel>
+                                </Grid>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox x:Name="FurniturePageBox" Grid.Column="0" Width="220"
+                                              VerticalContentAlignment="Center"
+                                              SelectionChanged="FurniturePageBox_SelectionChanged" />
+                                    <WrapPanel Grid.Column="1" HorizontalAlignment="Right"
+                                               VerticalAlignment="Center">
                                         <Button Click="AddFurniturePage_Click">
                                             <StackPanel Orientation="Horizontal">
                                                 <svgc:SvgViewbox Width="16" Height="16" Margin="0,0,7,0"
                                                                   Source="/assets/icons/folder-plus-icon.svg" />
-                                                <TextBlock Text="Neue Kategorie" />
+                                                <TextBlock Text="Liste hinzufügen" />
                                             </StackPanel>
                                         </Button>
                                         <Button Click="RenameFurniturePage_Click">
                                             <StackPanel Orientation="Horizontal">
                                                 <svgc:SvgViewbox Width="16" Height="16" Margin="0,0,7,0"
                                                                   Source="/assets/icons/folder-rename-icon.svg" />
-                                                <TextBlock Text="Umbenennen" />
+                                                <TextBlock Text="Liste umbenennen" />
                                             </StackPanel>
                                         </Button>
                                         <Button Click="DeleteFurniturePage_Click" Margin="0">
                                             <StackPanel Orientation="Horizontal">
                                                 <svgc:SvgViewbox Width="16" Height="16" Margin="0,0,7,0"
                                                                   Source="/assets/icons/folder-delete-icon.svg" />
-                                                <TextBlock Text="Kategorie löschen" />
+                                                <TextBlock Text="Liste löschen" />
                                             </StackPanel>
                                         </Button>
-                                    </StackPanel>
-                                    <ComboBox x:Name="FurniturePageBox" Width="300" HorizontalAlignment="Left"
-                                              VerticalContentAlignment="Center"
-                                              ItemsSource="{Binding FurniturePageNames}"
-                                              SelectionChanged="FurniturePageBox_SelectionChanged" />
-                                </DockPanel>
+                                    </WrapPanel>
+                                </Grid>
                             </StackPanel>
                             <DataGrid x:Name="FurnitureGrid" AutoGenerateColumns="False" CanUserAddRows="False"
                                       DockPanel.Dock="Top"
@@ -255,13 +270,13 @@
                                       Drop="FurnitureGrid_Drop"
                                       ContextMenuOpening="FurnitureGrid_ContextMenuOpening">
                                 <DataGrid.ContextMenu>
-                                    <ContextMenu>
-                                        <MenuItem Header="Etikett löschen" Click="DeleteFurnitureItem_Click" />
-                                        <MenuItem Header="Leeren (zurücksetzen)" Click="ResetItem_Click" />
+                                    <ContextMenu Style="{StaticResource ModernContextMenu}">
+                                        <MenuItem Style="{StaticResource ModernMenuItem}" Header="Eintrag löschen" Click="DeleteFurnitureItem_Click" />
+                                        <MenuItem Style="{StaticResource ModernMenuItem}" Header="Leeren (zurücksetzen)" Click="ResetItem_Click" />
                                         <Separator />
-                                        <MenuItem x:Name="MoveFurnitureUpMenuItem" Header="Nach oben verschieben"
+                                        <MenuItem x:Name="MoveFurnitureUpMenuItem" Style="{StaticResource ModernMenuItem}" Header="Nach oben verschieben"
                                                   Click="MoveFurnitureUp_Click" />
-                                        <MenuItem x:Name="MoveFurnitureDownMenuItem" Header="Nach unten verschieben"
+                                        <MenuItem x:Name="MoveFurnitureDownMenuItem" Style="{StaticResource ModernMenuItem}" Header="Nach unten verschieben"
                                                   Click="MoveFurnitureDown_Click" />
                                     </ContextMenu>
                                 </DataGrid.ContextMenu>
@@ -361,54 +376,8 @@
                                     </DataGridTextColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
-                        </DockPanel>
-                    </Border>
-                </TabItem>
-                <TabItem Header="Mitarbeiter">
-                    <Border Background="White" BorderBrush="#D8E0E8" BorderThickness="1"
-                            CornerRadius="8" Padding="18" Margin="0">
-                        <DockPanel>
-                            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
-                                <TextBlock Text="Mitarbeiter" FontSize="22" FontWeight="SemiBold" Foreground="#172B42" />
-                                <TextBlock Text="Mitarbeiterkarten und Anmeldecodes nach Filiale verwalten."
-                                           Foreground="#657586" Margin="0,4,0,14" />
-                                <DockPanel>
-                                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
-                                        <Button Content="Mitarbeiter hinzufügen" Click="AddEmployee_Click" />
-                                        <Button Content="Ausgewählten löschen" Click="DeleteEmployee_Click" Margin="0" />
-                                    </StackPanel>
-                                    <ComboBox x:Name="EmployeePageBox" Width="300" HorizontalAlignment="Left"
-                                              VerticalContentAlignment="Center"
-                                              ItemsSource="{Binding EmployeePageNames}"
-                                              SelectionChanged="EmployeePageBox_SelectionChanged" />
-                                </DockPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                    <Button Content="Neue Filiale" Click="AddEmployeePage_Click" />
-                                    <Button Content="Filiale umbenennen" Click="RenameEmployeePage_Click" />
-                                    <Button Content="Filiale löschen" Click="DeleteEmployeePage_Click" Margin="0" />
-                                </StackPanel>
-                            </StackPanel>
-                            <DataGrid x:Name="EmployeeGrid" AutoGenerateColumns="False" CanUserAddRows="False"
-                                      CanUserDeleteRows="False" IsReadOnly="False" SelectionMode="Single"
-                                      HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                                      AlternatingRowBackground="#F7F9FB" RowHeight="38"
-                                      CellEditEnding="EmployeeGrid_CellEditEnding">
-                                <DataGrid.CellStyle>
-                                    <Style TargetType="DataGridCell"
-                                           BasedOn="{StaticResource {x:Type DataGridCell}}">
-                                        <Setter Property="VerticalContentAlignment" Value="Center" />
-                                    </Style>
-                                </DataGrid.CellStyle>
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Name" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="2*" />
-                                    <DataGridTextColumn Header="Mitarbeiternummer" Binding="{Binding Number, UpdateSourceTrigger=PropertyChanged}" Width="*" />
-                                    <DataGridTextColumn Header="QR-/Anmeldecode" Binding="{Binding Code, UpdateSourceTrigger=PropertyChanged}" Width="*" />
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </DockPanel>
-                    </Border>
-                </TabItem>
-                </TabControl>
+                    </DockPanel>
+                </Border>
                 <GridSplitter x:Name="PreviewSplitter" Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
                               Background="#D8E0E8" ShowsPreview="True" />
                 <Border x:Name="PreviewPanel" Grid.Column="2" Background="#E8EEF4" CornerRadius="8"

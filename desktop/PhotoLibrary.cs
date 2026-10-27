@@ -36,10 +36,42 @@ public sealed class PhotoLibrary
         out int skippedPhotos)
     {
         var changed = false;
+        var skippedPhotoCount = 0;
         skippedPhotos = 0;
         var existingPhotos = data.Library.ToList();
         var keyMap = new Dictionary<string, string>(StringComparer.Ordinal);
         data.Library.Clear();
+
+        void NormalizePhotoReference(string? value, Action<string> assign)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return;
+
+            if (keyMap.TryGetValue(value, out var mappedKey))
+            {
+                changed |= !string.Equals(value, mappedKey, StringComparison.Ordinal);
+                assign(mappedKey);
+                return;
+            }
+
+            try
+            {
+                var newKey = ImportPhotoValue(value, sourceDirectory);
+                assign(newKey);
+                data.Library[newKey] = FindPhotoFile(newKey);
+                changed = true;
+            }
+            catch (UnsupportedPhotoFormatException) when (skipUnsupportedPhotos)
+            {
+                assign("");
+                skippedPhotoCount++;
+                changed = true;
+            }
+            catch (Exception ex) when (!strict && ex is (IOException or FormatException or InvalidDataException or ArgumentException))
+            {
+                AppDiagnostics.Exception("photo.normalize_reference", ex);
+            }
+        }
 
         foreach (var (oldKey, value) in existingPhotos)
         {
@@ -54,7 +86,7 @@ public sealed class PhotoLibrary
             catch (UnsupportedPhotoFormatException) when (skipUnsupportedPhotos)
             {
                 keyMap[oldKey] = "";
-                skippedPhotos++;
+                skippedPhotoCount++;
                 changed = true;
             }
             catch (Exception ex) when (!strict && ex is (IOException or FormatException or InvalidDataException or ArgumentException))
@@ -63,36 +95,19 @@ public sealed class PhotoLibrary
             }
         }
 
-        foreach (var item in data.Pages.SelectMany(page => page.Items))
+        foreach (var (catalog, item) in data.Catalogs
+                     .SelectMany(catalog => catalog.Lists
+                         .SelectMany(page => page.Items.Select(item => (catalog, item)))))
         {
-            if (string.IsNullOrWhiteSpace(item.Photo))
-                continue;
-
-            if (keyMap.TryGetValue(item.Photo, out var mappedKey))
+            NormalizePhotoReference(item.Photo, normalized => item.Photo = normalized);
+            foreach (var field in catalog.Layout.Fields.Where(field => field.Kind == "Photo"))
             {
-                changed |= !string.Equals(item.Photo, mappedKey, StringComparison.Ordinal);
-                item.Photo = mappedKey;
-                continue;
-            }
-
-            try
-            {
-                item.Photo = ImportPhotoValue(item.Photo, sourceDirectory);
-                data.Library[item.Photo] = FindPhotoFile(item.Photo);
-                changed = true;
-            }
-            catch (UnsupportedPhotoFormatException) when (skipUnsupportedPhotos)
-            {
-                item.Photo = "";
-                skippedPhotos++;
-                changed = true;
-            }
-            catch (Exception ex) when (!strict && ex is (IOException or FormatException or InvalidDataException or ArgumentException))
-            {
-                continue;
+                if (item.FieldValues.TryGetValue(field.Id, out var photoValue))
+                    NormalizePhotoReference(photoValue, normalized => item.FieldValues[field.Id] = normalized);
             }
         }
 
+        skippedPhotos = skippedPhotoCount;
         return changed;
     }
 
@@ -103,6 +118,12 @@ public sealed class PhotoLibrary
         return key;
     }
 
+    public void Clear()
+    {
+        foreach (var file in Directory.EnumerateFiles(directory))
+            File.Delete(file);
+    }
+
     public int RemovePhoto(CatalogData data, string key)
     {
         var path = GetPhotoPath(data, key);
@@ -110,7 +131,7 @@ public sealed class PhotoLibrary
             File.Delete(path);
 
         var references = CatalogData.GetPhotoReferences(data, key);
-        foreach (var item in data.Pages.SelectMany(page => page.Items))
+        foreach (var item in data.Catalogs.SelectMany(catalog => catalog.Lists).SelectMany(page => page.Items))
         {
             item.FieldValues ??= [];
             if (string.Equals(item.Photo, key, StringComparison.Ordinal))

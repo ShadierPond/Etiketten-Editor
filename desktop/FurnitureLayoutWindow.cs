@@ -96,7 +96,7 @@ public sealed class FurnitureLayoutWindow : Window
         Result = draft;
         ConfigureSettingsTabs();
 
-        Title = "Etikettenvorlage";
+        Title = "Katalogvorlage";
         Width = 920;
         Height = 650;
         MinWidth = 760;
@@ -108,14 +108,14 @@ public sealed class FurnitureLayoutWindow : Window
         var heading = new StackPanel { Margin = new Thickness(0, 0, 0, 14) };
         heading.Children.Add(new TextBlock
         {
-            Text = "Etikettenvorlage",
+            Text = "Katalogvorlage",
             FontSize = 22,
             FontWeight = FontWeights.SemiBold,
             Foreground = new SolidColorBrush(Color.FromRgb(23, 43, 66))
         });
         heading.Children.Add(new TextBlock
         {
-            Text = "Die Vorlage gilt für alle Etiketten. Positionen und Größen sind in cm angegeben; Breite oder Höhe 0 blendet ein Element aus.",
+            Text = "Die Vorlage gilt für alle Einträge dieses Katalogs. Positionen und Größen sind in cm angegeben; Breite oder Höhe 0 blendet ein Element aus.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = new SolidColorBrush(Color.FromRgb(101, 117, 134)),
             Margin = new Thickness(0, 4, 0, 0)
@@ -213,13 +213,13 @@ public sealed class FurnitureLayoutWindow : Window
         AddNumericField(gridSettings, "Horizontaler Abstand (cm)", horizontalGapBox, 0.1, 0, 0);
         AddNumericField(gridSettings, "Vertikaler Abstand (cm)", verticalGapBox, 0.1, 2, 0);
         AddNumericField(gridSettings, "Spalten", columnsBox, 1, 0, 1);
-        AddNumericField(gridSettings, "Etiketten je Kategorie", tileCountBox, 1, 2, 1);
+        AddNumericField(gridSettings, "Einträge je Liste", tileCountBox, 1, 2, 1);
 
         generalForm.Children.Add(cellSize);
         generalForm.Children.Add(gridSettings);
         generalForm.Children.Add(new TextBlock
         {
-            Text = "Die Vorschau rechts zeigt die Blattorientierung und die Verteilung der Etiketten.",
+            Text = "Die Vorschau rechts zeigt die Blattorientierung und die Verteilung der Einträge.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = new SolidColorBrush(Color.FromRgb(101, 117, 134)),
             Margin = new Thickness(0, 12, 0, 0)
@@ -235,7 +235,7 @@ public sealed class FurnitureLayoutWindow : Window
         elementButtons.Children.Add(removeElement);
         labelForm.Children.Add(new TextBlock
         {
-            Text = "Etikettfelder",
+            Text = "Katalogfelder",
             FontWeight = FontWeights.SemiBold,
             Foreground = new SolidColorBrush(Color.FromRgb(23, 43, 66)),
             Margin = new Thickness(0, 0, 0, 8)
@@ -374,7 +374,7 @@ public sealed class FurnitureLayoutWindow : Window
             Content = labelForm
         };
         settingsTabs.Items.Add(new TabItem { Header = "Allgemein", Content = generalScroll });
-        settingsTabs.Items.Add(new TabItem { Header = "Etikett", Content = labelScroll });
+        settingsTabs.Items.Add(new TabItem { Header = "Katalog", Content = labelScroll });
         settingsTabs.SelectedIndex = 0;
         settingsTabs.SelectionChanged += SettingsTabs_SelectionChanged;
         columns.Children.Add(settingsTabs);
@@ -1028,7 +1028,7 @@ public sealed class FurnitureLayoutWindow : Window
         {
             canvas.Children.Add(new TextBlock
             {
-                Text = $"Seite 1: {itemsOnPage} von {draft.TileCount} Etiketten",
+                Text = $"Seite 1: {itemsOnPage} von {draft.TileCount} Einträgen",
                 Width = pageWidth - pageMargin * 2,
                 FontSize = 8,
                 Foreground = new SolidColorBrush(Color.FromRgb(101, 117, 134)),

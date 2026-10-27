@@ -22,10 +22,18 @@ public static class PrintService
     private const double Dpi = 96;
     private const double MillimetresPerInch = 25.4;
 
-    public static void PrintFurniture(Window owner, CatalogData catalog, IEnumerable<CatalogPage> pages, PhotoLibrary photoLibrary)
+    public static void PrintFurniture(
+        Window owner,
+        CatalogData catalog,
+        IEnumerable<CatalogPage> pages,
+        PhotoLibrary photoLibrary,
+        FurniturePrintLayout? layoutOverride = null,
+        string? catalogName = null)
     {
-        ShowPrintDialog(owner, CreateFurnitureDocument(catalog, pages, photoLibrary), "Etiketten",
-            catalog.FurniturePrintLayout.PaperFormat);
+        var layout = layoutOverride ?? catalog.FurniturePrintLayout;
+        ShowPrintDialog(owner, CreateFurnitureDocument(catalog, pages, photoLibrary,
+                layoutOverride: layout, catalogName: catalogName),
+            catalogName ?? "Etiketten", layout.PaperFormat);
     }
 
     public static void SaveFurniturePdf(
@@ -33,8 +41,11 @@ public static class PrintService
         CatalogData catalog,
         IEnumerable<CatalogPage> pages,
         PhotoLibrary photoLibrary,
-        string fileName) =>
-        SaveDocumentAsPdf(owner, CreateFurnitureDocument(catalog, pages, photoLibrary), fileName);
+        string fileName,
+        FurniturePrintLayout? layoutOverride = null,
+        string? catalogName = null) =>
+        SaveDocumentAsPdf(owner, CreateFurnitureDocument(catalog, pages, photoLibrary,
+            layoutOverride: layoutOverride, catalogName: catalogName), fileName);
 
     public static FixedDocument CreateFurnitureDocument(
         CatalogData catalog,
@@ -42,9 +53,11 @@ public static class PrintService
         PhotoLibrary photoLibrary,
         CatalogItem? highlightedItem = null,
         Action<CatalogItem>? onPreviewItemClicked = null,
-        ICollection<Border>? previewCells = null)
+        ICollection<Border>? previewCells = null,
+        FurniturePrintLayout? layoutOverride = null,
+        string? catalogName = null)
     {
-        var layout = catalog.FurniturePrintLayout;
+        var layout = layoutOverride ?? catalog.FurniturePrintLayout;
         layout.Normalize();
         var orientation = layout.Orientation == "Portrait"
             ? PageOrientation.Portrait
@@ -64,17 +77,19 @@ public static class PrintService
             var columns = Math.Clamp(layout.Columns, 1, Math.Min(layout.TileCount, maxColumnsOnPage));
             var rowsPerPage = Math.Max(1, (int)((pageHeight - Mm(28)) / (labelHeight + verticalGap)));
             var capacityPerPage = columns * rowsPerPage;
-            var pageCount = Math.Max(1, (int)Math.Ceiling(layout.TileCount / (double)capacityPerPage));
+            var entryCount = Math.Max(layout.TileCount, catalogPage.Items.Count);
+            var pageCount = Math.Max(1, (int)Math.Ceiling(entryCount / (double)capacityPerPage));
             for (var pageIndex = 0; pageIndex < pageCount; pageIndex++)
             {
                 var page = CreatePage(pageWidth, pageHeight);
-                AddText(page, "Etiketten Editor", Mm(8), Mm(7), 160, 20, 9, Brushes.SlateGray);
+                AddText(page, $"Furnituren Editor · {catalogName ?? "Etiketten"}",
+                    Mm(8), Mm(7), 220, 20, 9, Brushes.SlateGray);
                 AddText(page, catalogPage.Name, pageWidth / 2 - 170, Mm(7), 340, 20, 12, Brushes.Black, FontWeights.SemiBold);
-                AddText(page, $"{layout.PaperFormat} · {layout.TileCount} Etiketten · {layout.Columns} Spalten" +
+                AddText(page, $"{layout.PaperFormat} · {entryCount} Einträge · {layout.Columns} Spalten" +
                     (pageCount > 1 ? $" · Seite {pageIndex + 1}/{pageCount}" : ""),
                     pageWidth - Mm(62), Mm(7), Mm(54), 20, 9, Brushes.SlateGray);
                 var startIndex = pageIndex * capacityPerPage;
-                var itemsOnPage = Math.Min(capacityPerPage, layout.TileCount - startIndex);
+                var itemsOnPage = Math.Min(capacityPerPage, entryCount - startIndex);
                 var rows = (int)Math.Ceiling(itemsOnPage / (double)columns);
                 var totalWidth = labelWidth * columns + horizontalGap * (columns - 1);
                 var totalHeight = labelHeight * rows + verticalGap * (rows - 1);
@@ -153,11 +168,16 @@ public static class PrintService
         return document;
     }
 
-    public static void ExportQrBarcodeZip(Window owner, CatalogData catalog)
+    public static void ExportQrBarcodeZip(
+        Window owner,
+        CatalogData catalog,
+        IEnumerable<CatalogPage>? pages = null,
+        FurniturePrintLayout? layoutOverride = null,
+        string? catalogName = null)
     {
-        var layout = catalog.FurniturePrintLayout;
+        var layout = layoutOverride ?? catalog.FurniturePrintLayout;
         layout.Normalize();
-        var products = catalog.Pages.SelectMany(page => page.Items)
+        var products = (pages ?? catalog.Pages).SelectMany(page => page.Items)
             .Where(item => !string.IsNullOrWhiteSpace(GetQrContent(item, layout)))
             .ToList();
         if (products.Count == 0)
@@ -171,7 +191,7 @@ public static class PrintService
         {
             Title = "QR-/Barcode-Codes speichern",
             Filter = "ZIP-Datei (*.zip)|*.zip",
-            FileName = "etiketten-codes.zip",
+            FileName = $"{SafeFileName(catalogName ?? "etiketten")}-codes.zip",
             AddExtension = true
         };
         if (dialog.ShowDialog(owner) != true)

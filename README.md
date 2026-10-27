@@ -12,7 +12,11 @@ Das Repository enthält zwei Oberflächen:
 
 ## Funktionen
 
-- Artikel und Kategorien lokal verwalten
+- Frei benennbare Kataloge mit eigenen Vorlagen und Listen lokal verwalten
+- Kataloge beim ersten Start in einem Assistenten einrichten; Felder und
+  Druckvorlage lassen sich dabei direkt konfigurieren
+- Datenbank auf Werkseinstellungen zurücksetzen, mit automatischer JSON-
+  Sicherung der Kataloge und Fotos
 - Suche nach Beschreibung, BECO-Nummer, Referenz und Preisen
 - Fotos pro Artikel auswählen und in der lokalen Mediathek wiederverwenden
 - QR-/Barcode-Einstellungen mit Primärfeld, optionalem Fallback sowie Präfix und Suffix
