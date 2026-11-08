@@ -1,5 +1,4 @@
 using System.IO;
-using System.IO.Compression;
 using System.Printing;
 using System.Globalization;
 using System.Windows;
@@ -15,86 +14,97 @@ using QRCoder;
 using ZXing;
 using ZXing.Common;
 
-namespace FuniturenEditor.Desktop;
+namespace LabelEditor.Desktop;
 
 public static class PrintService
 {
     private const double Dpi = 96;
     private const double MillimetresPerInch = 25.4;
 
-    public static void PrintFurniture(
+    public static void PrintLabels(
         Window owner,
         CatalogData catalog,
         IEnumerable<CatalogPage> pages,
         PhotoLibrary photoLibrary,
-        FurniturePrintLayout? layoutOverride = null,
-        string? catalogName = null)
+        LabelPrintLayout? layoutOverride = null,
+        string? catalogName = null,
+        bool showPageNumbers = false)
     {
-        var layout = layoutOverride ?? catalog.FurniturePrintLayout;
-        ShowPrintDialog(owner, CreateFurnitureDocument(catalog, pages, photoLibrary,
-                layoutOverride: layout, catalogName: catalogName),
+        var layout = layoutOverride ?? catalog.LabelLayout;
+        ShowPrintDialog(owner, CreateLabelDocument(catalog, pages, photoLibrary,
+                layoutOverride: layout, catalogName: catalogName, showPageNumbers: showPageNumbers),
             catalogName ?? "Etiketten", layout.PaperFormat);
     }
 
-    public static void SaveFurniturePdf(
+    public static void SaveLabelsPdf(
         Window owner,
         CatalogData catalog,
         IEnumerable<CatalogPage> pages,
         PhotoLibrary photoLibrary,
         string fileName,
-        FurniturePrintLayout? layoutOverride = null,
-        string? catalogName = null) =>
-        SaveDocumentAsPdf(owner, CreateFurnitureDocument(catalog, pages, photoLibrary,
-            layoutOverride: layoutOverride, catalogName: catalogName), fileName);
+        LabelPrintLayout? layoutOverride = null,
+        string? catalogName = null,
+        bool showPageNumbers = false) =>
+        SaveDocumentAsPdf(owner, CreateLabelDocument(catalog, pages, photoLibrary,
+            layoutOverride: layoutOverride, catalogName: catalogName, showPageNumbers: showPageNumbers), fileName);
 
-    public static FixedDocument CreateFurnitureDocument(
+    public static FixedDocument CreateLabelDocument(
         CatalogData catalog,
         IEnumerable<CatalogPage> pages,
         PhotoLibrary photoLibrary,
         CatalogItem? highlightedItem = null,
         Action<CatalogItem>? onPreviewItemClicked = null,
         ICollection<Border>? previewCells = null,
-        FurniturePrintLayout? layoutOverride = null,
-        string? catalogName = null)
+        LabelPrintLayout? layoutOverride = null,
+        string? catalogName = null,
+        bool showPageNumbers = false)
     {
-        var layout = layoutOverride ?? catalog.FurniturePrintLayout;
+        var layout = layoutOverride ?? catalog.LabelLayout;
         layout.Normalize();
+        var catalogPages = pages.ToList();
         var orientation = layout.Orientation == "Portrait"
             ? PageOrientation.Portrait
             : PageOrientation.Landscape;
         var document = CreateDocument(orientation, layout.PaperFormat);
-        foreach (var catalogPage in pages)
+        var (paperWidthCm, paperHeightCm) = LabelPrintLayout.GetPaperDimensionsCm(layout.PaperFormat);
+        var pageWidth = Cm(orientation == PageOrientation.Portrait ? paperWidthCm : paperHeightCm);
+        var pageHeight = Cm(orientation == PageOrientation.Portrait ? paperHeightCm : paperWidthCm);
+        var labelWidth = Cm(layout.CellWidthCm);
+        var labelHeight = Cm(layout.CellHeightCm);
+        var horizontalGap = Cm(layout.HorizontalGapCm);
+        var verticalGap = Cm(layout.VerticalGapCm);
+        var maxColumnsOnPage = Math.Max(1,
+            (int)((pageWidth - Mm(16) + horizontalGap) / (labelWidth + horizontalGap)));
+        var columns = Math.Clamp(layout.Columns, 1, Math.Min(layout.TileCount, maxColumnsOnPage));
+        var rowsPerPage = Math.Max(1, (int)((pageHeight - Mm(28)) / (labelHeight + verticalGap)));
+        var capacityPerPage = columns * rowsPerPage;
+        var totalPageCount = catalogPages.Sum(catalogPage =>
+            Math.Max(1, (int)Math.Ceiling(catalogPage.Items.Count / (double)capacityPerPage)));
+        var documentPageNumber = 0;
+        foreach (var catalogPage in catalogPages)
         {
-            var (paperWidthCm, paperHeightCm) = FurniturePrintLayout.GetPaperDimensionsCm(layout.PaperFormat);
-            var pageWidth = Cm(orientation == PageOrientation.Portrait ? paperWidthCm : paperHeightCm);
-            var pageHeight = Cm(orientation == PageOrientation.Portrait ? paperHeightCm : paperWidthCm);
-            var labelWidth = Cm(layout.CellWidthCm);
-            var labelHeight = Cm(layout.CellHeightCm);
-            var horizontalGap = Cm(layout.HorizontalGapCm);
-            var verticalGap = Cm(layout.VerticalGapCm);
-            var maxColumnsOnPage = Math.Max(1,
-                (int)((pageWidth - Mm(16) + horizontalGap) / (labelWidth + horizontalGap)));
-            var columns = Math.Clamp(layout.Columns, 1, Math.Min(layout.TileCount, maxColumnsOnPage));
-            var rowsPerPage = Math.Max(1, (int)((pageHeight - Mm(28)) / (labelHeight + verticalGap)));
-            var capacityPerPage = columns * rowsPerPage;
-            var entryCount = Math.Max(layout.TileCount, catalogPage.Items.Count);
+            var entryCount = catalogPage.Items.Count;
             var pageCount = Math.Max(1, (int)Math.Ceiling(entryCount / (double)capacityPerPage));
             for (var pageIndex = 0; pageIndex < pageCount; pageIndex++)
             {
+                documentPageNumber++;
                 var page = CreatePage(pageWidth, pageHeight);
-                AddText(page, $"Furnituren Editor · {catalogName ?? "Etiketten"}",
+                AddText(page, catalogName ?? "Etiketten",
                     Mm(8), Mm(7), 220, 20, 9, Brushes.SlateGray);
                 AddText(page, catalogPage.Name, pageWidth / 2 - 170, Mm(7), 340, 20, 12, Brushes.Black, FontWeights.SemiBold);
-                AddText(page, $"{layout.PaperFormat} · {entryCount} Einträge · {layout.Columns} Spalten" +
-                    (pageCount > 1 ? $" · Seite {pageIndex + 1}/{pageCount}" : ""),
-                    pageWidth - Mm(62), Mm(7), Mm(54), 20, 9, Brushes.SlateGray);
                 var startIndex = pageIndex * capacityPerPage;
                 var itemsOnPage = Math.Min(capacityPerPage, entryCount - startIndex);
                 var rows = (int)Math.Ceiling(itemsOnPage / (double)columns);
                 var totalWidth = labelWidth * columns + horizontalGap * (columns - 1);
                 var totalHeight = labelHeight * rows + verticalGap * (rows - 1);
-                var left = (page.Width - totalWidth) / 2;
-                var top = (page.Height - totalHeight) / 2 + Mm(8);
+                var (horizontalAlignment, verticalAlignment) = layout.GetTileGridAlignmentFactors();
+                var bodyLeft = Mm(8);
+                var bodyTop = Mm(20);
+                var bodyWidth = page.Width - Mm(16);
+                var bodyHeight = page.Height - Mm(28);
+                var left = bodyLeft + Math.Max(0, bodyWidth - totalWidth) * horizontalAlignment;
+                var top = bodyTop +
+                    Math.Max(0, bodyHeight - totalHeight) * verticalAlignment;
                 for (var localIndex = 0; localIndex < itemsOnPage; localIndex++)
                 {
                     var index = startIndex + localIndex;
@@ -104,7 +114,7 @@ public static class PrintService
                     "preview.cell.build",
                     () => $"position={index + 1};barcodeField={IsBarcodeField(layout)}");
 #endif
-                    var cell = CreateFurnitureCell(
+                    var cell = CreateLabelCell(
                         catalog, item, photoLibrary, layout,
                         ReferenceEquals(item, highlightedItem), onPreviewItemClicked);
                     previewCells?.Add(cell);
@@ -114,14 +124,41 @@ public static class PrintService
                     FixedPage.SetTop(cell, top + row * (labelHeight + verticalGap));
                     page.Children.Add(cell);
                 }
+                AddCompanyLogo(page, catalog, photoLibrary, layout);
+                if (showPageNumbers)
+                    AddText(page, $"Seite {documentPageNumber} von {totalPageCount}",
+                        pageWidth - Mm(48), pageHeight - Mm(12), Mm(40), 14, 8, Brushes.SlateGray,
+                        textAlignment: TextAlignment.Right);
                 AddPage(document, page);
             }
         }
         return document;
     }
 
-    public static Border CreateFurnitureCellPreview(CatalogData catalog, CatalogItem item, PhotoLibrary photoLibrary, FurniturePrintLayout layout) =>
-        CreateFurnitureCell(catalog, item, photoLibrary, layout);
+    private static void AddCompanyLogo(
+        FixedPage page,
+        CatalogData catalog,
+        PhotoLibrary photoLibrary,
+        LabelPrintLayout layout)
+    {
+        if (string.IsNullOrWhiteSpace(layout.LogoPhotoKey))
+            return;
+
+        var path = photoLibrary.GetPhotoPath(catalog, layout.LogoPhotoKey);
+        if (path is null)
+            return;
+
+        var logo = CreatePhotoImage(path);
+        logo.Width = Cm(layout.LogoWidthCm);
+        logo.Height = Cm(layout.LogoHeightCm);
+        logo.Stretch = Stretch.Uniform;
+        FixedPage.SetLeft(logo, Cm(layout.LogoXcm));
+        FixedPage.SetTop(logo, Cm(layout.LogoYcm));
+        page.Children.Add(logo);
+    }
+
+    public static Border CreateLabelCellPreview(CatalogData catalog, CatalogItem item, PhotoLibrary photoLibrary, LabelPrintLayout layout) =>
+        CreateLabelCell(catalog, item, photoLibrary, layout, showLayoutBounds: true);
 
     public static void PrintEmployees(Window owner, IEnumerable<EmployeePage> branches, EmployeeLayout layout)
     {
@@ -150,7 +187,7 @@ public static class PrintService
             for (var pageIndex = 0; pageIndex < pageCount; pageIndex++)
             {
                 var page = CreatePage(Mm(210), Mm(297));
-                AddText(page, $"Furnituren Editor · Mitarbeitendencodes · {branch.Name}", Mm(8), Mm(8), 700, 22, 10, Brushes.Black, FontWeights.SemiBold);
+                AddText(page, $"Etiketten Editor · Mitarbeitendencodes · {branch.Name}", Mm(8), Mm(8), 700, 22, 10, Brushes.Black, FontWeights.SemiBold);
                 var start = pageIndex * columns * rowsPerPage;
                 var end = Math.Min(branch.Employees.Count, start + columns * rowsPerPage);
                 for (var itemIndex = start; itemIndex < end; itemIndex++)
@@ -168,60 +205,9 @@ public static class PrintService
         return document;
     }
 
-    public static void ExportQrBarcodeZip(
-        Window owner,
-        CatalogData catalog,
-        IEnumerable<CatalogPage>? pages = null,
-        FurniturePrintLayout? layoutOverride = null,
-        string? catalogName = null)
-    {
-        var layout = layoutOverride ?? catalog.FurniturePrintLayout;
-        layout.Normalize();
-        var products = (pages ?? catalog.Pages).SelectMany(page => page.Items)
-            .Where(item => !string.IsNullOrWhiteSpace(GetQrContent(item, layout)))
-            .ToList();
-        if (products.Count == 0)
-        {
-            MessageBox.Show(owner, "Es wurden keine Artikel mit einem QR-/Barcodewert gefunden.",
-                "QR-/Barcode-Export", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        var dialog = new Microsoft.Win32.SaveFileDialog
-        {
-            Title = "QR-/Barcode-Codes speichern",
-            Filter = "ZIP-Datei (*.zip)|*.zip",
-            FileName = $"{SafeFileName(catalogName ?? "etiketten")}-codes.zip",
-            AddExtension = true
-        };
-        if (dialog.ShowDialog(owner) != true)
-            return;
-
-        try
-        {
-            using var archive = ZipFile.Open(dialog.FileName, ZipArchiveMode.Create);
-            var nameCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            foreach (var item in products)
-            {
-                var qrContent = GetQrContent(item, layout);
-                var baseName = SafeFileName(qrContent);
-                nameCounts.TryGetValue(baseName, out var count);
-                nameCounts[baseName] = ++count;
-                var entry = archive.CreateEntry($"{baseName}{(count > 1 ? $" ({count})" : "")}.png");
-                using var stream = entry.Open();
-                stream.Write(CreateQrBarcodeBytes(item, layout));
-            }
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(owner, $"Die QR-/Barcode-Codes konnten nicht erstellt werden.\n\n{ex.Message}",
-                "QR-/Barcode-Export", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
     private static FixedDocument CreateDocument(PageOrientation orientation, string paperFormat = "A4")
     {
-        var (paperWidthCm, paperHeightCm) = FurniturePrintLayout.GetPaperDimensionsCm(paperFormat);
+        var (paperWidthCm, paperHeightCm) = LabelPrintLayout.GetPaperDimensionsCm(paperFormat);
         var isLandscape = orientation == PageOrientation.Landscape;
         var document = new FixedDocument();
         document.DocumentPaginator.PageSize = isLandscape
@@ -398,13 +384,14 @@ public static class PrintService
         };
     }
 
-    private static Border CreateFurnitureCell(
+    private static Border CreateLabelCell(
         CatalogData catalog,
         CatalogItem item,
         PhotoLibrary photoLibrary,
-        FurniturePrintLayout layout,
+        LabelPrintLayout layout,
         bool highlighted = false,
-        Action<CatalogItem>? onPreviewItemClicked = null)
+        Action<CatalogItem>? onPreviewItemClicked = null,
+        bool showLayoutBounds = false)
     {
         var width = Cm(layout.CellWidthCm);
         var height = Cm(layout.CellHeightCm);
@@ -414,7 +401,7 @@ public static class PrintService
             Height = height,
             Background = Brushes.Transparent
         };
-        var codeContent = GetQrContent(item, layout);
+        var codeContent = GetQrValue(item, layout);
         foreach (var field in layout.Elements)
         {
             object? content = field.Kind switch
@@ -422,9 +409,11 @@ public static class PrintService
                 "Photo" => GetPhotoContent(catalog, item, field, photoLibrary),
                 "Qr" => CreateCodeContent(GetFieldCodeContent(item, field, layout, codeContent), barcode: false),
                 "Barcode" => CreateCodeContent(GetFieldCodeContent(item, field, layout, codeContent), barcode: true),
-                _ => GetFieldText(item, field, layout)
+                _ => GetFieldText(item, field, layout, showLayoutBounds)
             };
-            AddFurnitureElement(canvas, field, content, width, height);
+            if (showLayoutBounds && (content is null || content is string text && string.IsNullOrWhiteSpace(text)))
+                content = GetLayoutPreviewPlaceholder(field, codeContent);
+            AddLabelElement(canvas, field, content, width, height, showLayoutBounds);
         }
         var border = new Border
         {
@@ -438,7 +427,7 @@ public static class PrintService
         };
         border.Tag = item;
         if (highlighted)
-            SetFurnitureCellHighlighted(border, true);
+            SetLabelCellHighlighted(border, true);
         if (onPreviewItemClicked is not null)
         {
             border.Cursor = Cursors.Hand;
@@ -451,7 +440,7 @@ public static class PrintService
         return border;
     }
 
-    public static Border? UpdateFurniturePreviewHighlight(
+    public static Border? UpdateLabelPreviewHighlight(
         IEnumerable<Border> previewCells,
         CatalogItem? highlightedItem,
         Border? previousCell)
@@ -463,20 +452,21 @@ public static class PrintService
             return previousCell;
 
         if (previousCell is not null)
-            SetFurnitureCellHighlighted(previousCell, false);
+            SetLabelCellHighlighted(previousCell, false);
         if (highlightedCell is not null)
-            SetFurnitureCellHighlighted(highlightedCell, true);
+            SetLabelCellHighlighted(highlightedCell, true);
         return highlightedCell;
     }
 
-    private static void SetFurnitureCellHighlighted(Border border, bool highlighted)
+    private static void SetLabelCellHighlighted(Border border, bool highlighted)
     {
         border.BorderBrush = highlighted ? Brushes.DarkOrange : Brushes.Black;
         border.BorderThickness = new Thickness(highlighted ? 2 : 0.55);
     }
 
     private static void AddText(FixedPage page, string value, double left, double top, double width, double height,
-        double fontSize, Brush foreground, FontWeight? weight = null)
+        double fontSize, Brush foreground, FontWeight? weight = null,
+        TextAlignment textAlignment = TextAlignment.Center)
     {
         var text = new TextBlock
         {
@@ -486,7 +476,7 @@ public static class PrintService
             FontSize = fontSize,
             FontWeight = weight ?? FontWeights.Normal,
             Foreground = foreground,
-            TextAlignment = TextAlignment.Center,
+            TextAlignment = textAlignment,
             TextTrimming = TextTrimming.CharacterEllipsis
         };
         FixedPage.SetLeft(text, left);
@@ -526,12 +516,13 @@ public static class PrintService
         };
     }
 
-    private static void AddFurnitureElement(
+    private static void AddLabelElement(
         Canvas canvas,
         PrintElementLayout layout,
         object? content,
         double cellWidth,
-        double cellHeight)
+        double cellHeight,
+        bool showLayoutBounds = false)
     {
         var width = Cm(layout.Width);
         var height = Cm(layout.Height);
@@ -553,14 +544,37 @@ public static class PrintService
                 Text = text,
                 FontSize = layout.AutoShrinkText != false
                     ? FitTextFontSize(text, layout.FontSize * 96 / 72, width, height,
-                        layout.Bold ? FontWeights.SemiBold : FontWeights.Normal)
+                        layout.Bold ? FontWeights.Bold : FontWeights.Normal,
+                        layout.Italic ? FontStyles.Italic : FontStyles.Normal)
                     : layout.FontSize * 96 / 72,
-                FontWeight = layout.Bold ? FontWeights.SemiBold : FontWeights.Normal,
-                TextAlignment = TextAlignment.Center,
+                FontWeight = layout.Bold ? FontWeights.Bold : FontWeights.Normal,
+                FontStyle = layout.Italic ? FontStyles.Italic : FontStyles.Normal,
+                TextDecorations = layout.Underline ? TextDecorations.Underline : null,
+                TextAlignment = layout.TextAlignment switch
+                {
+                    "Left" => TextAlignment.Left,
+                    "Right" => TextAlignment.Right,
+                    _ => TextAlignment.Center
+                },
                 TextTrimming = layout.AutoShrinkText != false ? TextTrimming.None : TextTrimming.CharacterEllipsis,
                 TextWrapping = TextWrapping.Wrap,
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Center
+            };
+        }
+
+        if (showLayoutBounds)
+        {
+            element.Width = width;
+            element.Height = height;
+            element.HorizontalAlignment = HorizontalAlignment.Stretch;
+            element.VerticalAlignment = VerticalAlignment.Stretch;
+            element = new Border
+            {
+                Background = Brushes.Transparent,
+                BorderBrush = new SolidColorBrush(Color.FromArgb(150, 87, 116, 145)),
+                BorderThickness = new Thickness(0.65),
+                Child = element
             };
         }
 
@@ -575,16 +589,51 @@ public static class PrintService
         canvas.Children.Add(element);
     }
 
+    private static object? GetLayoutPreviewPlaceholder(
+        PrintElementLayout field,
+        string codeContent)
+    {
+        if (field.Kind == "Photo")
+            return new TextBlock
+            {
+                Text = "Foto",
+                Foreground = new SolidColorBrush(Color.FromRgb(127, 141, 155)),
+                FontSize = 9,
+                TextAlignment = TextAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+
+        if (field.Kind is "Qr" or "Barcode")
+        {
+            var value = string.IsNullOrEmpty(codeContent) ? "BEISPIEL-123" : codeContent;
+            var content = field.Prefix + value + field.Suffix;
+            return CreateCodeContent(content, barcode: field.Kind == "Barcode");
+        }
+
+        var valueText = field.Kind == "Number"
+            ? field.Source == "Ek" ? "12,50" : "19,99"
+            : field.Source switch
+            {
+                "Title" => "Beispiel-Beschreibung",
+                "Beco" => "12345",
+                "Ref" => "ART-000123",
+                _ => "Beispieltext"
+            };
+        return field.Prefix + valueText + field.Suffix;
+    }
+
     private static double FitTextFontSize(
         string text,
         double requestedSize,
         double width,
         double height,
-        FontWeight weight)
+        FontWeight weight,
+        FontStyle style)
     {
         var typeface = new Typeface(
             new FontFamily("Segoe UI"),
-            FontStyles.Normal,
+            style,
             weight,
             FontStretches.Normal);
         for (var size = requestedSize; size >= 4; size -= 0.25)
@@ -680,7 +729,7 @@ public static class PrintService
         };
     }
 
-    public static byte[] CreateQrBarcodeBytes(CatalogItem item, FurniturePrintLayout layout)
+    public static byte[] CreateQrBarcodeBytes(CatalogItem item, LabelPrintLayout layout)
     {
         var content = GetQrContent(item, layout);
         if (string.IsNullOrWhiteSpace(content))
@@ -688,17 +737,26 @@ public static class PrintService
         return IsBarcodeField(layout) ? RenderBarcodeBytes(content) : CreateQrBytes(content);
     }
 
-    public static bool IsBarcodeField(FurniturePrintLayout layout) =>
+    public static bool IsBarcodeField(LabelPrintLayout layout) =>
         layout.Elements.Any(field => field.Kind == "Barcode");
 
-    public static string GetQrContent(CatalogItem item, FurniturePrintLayout layout)
+    public static string GetQrContent(CatalogItem item, LabelPrintLayout layout)
+    {
+        var value = GetQrValue(item, layout);
+        var codeField = layout.Elements.FirstOrDefault(field => field.Kind is "Qr" or "Barcode");
+        return value.Length == 0 || codeField is null
+            ? value
+            : codeField.Prefix + value + codeField.Suffix;
+    }
+
+    private static string GetQrValue(CatalogItem item, LabelPrintLayout layout)
     {
         if (!layout.QrCode.Enabled)
             return "";
         var value = GetSourceValue(item, layout, layout.QrCode.SourceField);
         if (value.Length == 0 && layout.QrCode.UseFallback)
             value = GetSourceValue(item, layout, layout.QrCode.FallbackField);
-        return value.Length == 0 ? "" : layout.QrCode.Prefix + value + layout.QrCode.Suffix;
+        return value;
     }
 
     private static object? CreateCodeContent(string content, bool barcode)
@@ -711,13 +769,12 @@ public static class PrintService
     private static string GetFieldCodeContent(
         CatalogItem item,
         PrintElementLayout field,
-        FurniturePrintLayout layout,
+        LabelPrintLayout layout,
         string configuredContent)
     {
         var value = item.FieldValues.GetValueOrDefault(field.Id, "").Trim();
-        if (value.Length == 0)
-            return configuredContent;
-        return layout.QrCode.Prefix + value + layout.QrCode.Suffix;
+        var content = value.Length == 0 ? configuredContent : value;
+        return content.Length == 0 ? "" : field.Prefix + content + field.Suffix;
     }
 
     private static Image? GetPhotoContent(
@@ -733,19 +790,25 @@ public static class PrintService
         return path is null ? null : CreatePhotoImage(path);
     }
 
-    private static string GetFieldText(CatalogItem item, PrintElementLayout field, FurniturePrintLayout layout)
+    private static string GetFieldText(
+        CatalogItem item,
+        PrintElementLayout field,
+        LabelPrintLayout layout,
+        bool showLayoutBounds = false)
     {
         var value = item.FieldValues.GetValueOrDefault(field.Id, "");
         if (string.IsNullOrWhiteSpace(value))
             value = GetLegacySourceValue(item, field.Source);
         if (field.Source == "Beco")
-            value = DisplayBecoText(item, layout.MissingBecoText);
-        return field.Kind == "Number" && value.Length > 0
-            ? value.Trim() + field.Suffix
-            : value.Trim();
+            value = showLayoutBounds
+                ? value.Trim()
+                : DisplayBecoText(item, layout.MissingBecoText);
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+        return field.Prefix + value.Trim() + field.Suffix;
     }
 
-    private static string GetSourceValue(CatalogItem item, FurniturePrintLayout layout, string fieldId)
+    private static string GetSourceValue(CatalogItem item, LabelPrintLayout layout, string fieldId)
     {
         if (item.FieldValues.TryGetValue(fieldId, out var value))
             return value.Trim();
@@ -781,10 +844,10 @@ public static class PrintService
         if (beco.Length > 0)
             return beco;
 
-        return HasFurnitureContent(item) ? missingBecoText : "";
+        return HasLabelContent(item) ? missingBecoText : "";
     }
 
-    private static bool HasFurnitureContent(CatalogItem item) =>
+    private static bool HasLabelContent(CatalogItem item) =>
         new[]
         {
             item.Title, item.Ref, item.Photo, item.Price, item.Ek, item.SalesPrice

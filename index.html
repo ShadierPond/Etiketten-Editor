@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Furnituren Editor</title>
+<title>Etiketten Editor</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -15,9 +15,9 @@ FIRST VIEWPORT: Navigation and category controls frame a large, centered A4 proo
 FORM: Operate-first split workspace with print preview as the permanent source of truth.
 -->
 <header class="app-header">
-  <a class="brand" href="#" aria-label="Furnituren Editor Startseite">
+  <a class="brand" href="#" aria-label="Etiketten Editor Startseite">
     <span class="brand-mark" aria-hidden="true">FE</span>
-    <span>Furnituren<span>Editor</span></span>
+    <span>Etiketten<span>Editor</span></span>
   </a>
   <div class="header-status"><span class="status-dot"></span>Arbeitsbereich aktiv</div>
   <div class="header-actions">
@@ -36,11 +36,11 @@ FORM: Operate-first split workspace with print preview as the permanent source o
       <p>Bereiten Sie Druckbögen für Artikel und Mitarbeitendencodes vor.</p>
     </div>
     <div class="editor-tabs" role="tablist" aria-label="Etikettentyp">
-      <button class="editor-tab active" id="furnitureTab" onclick="setEditorMode('furniture')" role="tab" aria-selected="true">Furnituren</button>
+      <button class="editor-tab active" id="labelsTab" onclick="setEditorMode('labels')" role="tab" aria-selected="true">Etiketten</button>
       <button class="editor-tab" id="employeeTab" onclick="setEditorMode('employee')" role="tab" aria-selected="false">Mitarbeiter</button>
     </div>
     <div class="search-control">
-      <label for="globalSearch" id="searchLabel">Furnituren suchen</label>
+      <label for="globalSearch" id="searchLabel">Etiketten suchen</label>
       <div class="search-field">
         <input id="globalSearch" type="search" placeholder="Kategorie, Beco, Beschreibung, Referenz" autocomplete="off" oninput="runSearch()" aria-describedby="searchHint">
         <button class="search-clear" id="searchClear" type="button" onclick="clearSearch()" aria-label="Suche löschen" hidden>×</button>
@@ -111,7 +111,7 @@ FORM: Operate-first split workspace with print preview as the permanent source o
         <div class="preview-scale">
           <div class="page">
             <div class="page-heading">
-              <span>Furnituren Editor</span>
+              <span>Etiketten Editor</span>
               <strong id="sheetCategory">Kategorie 1</strong>
               <span id="sheetFormat">A4 · 15 Etiketten</span>
             </div>

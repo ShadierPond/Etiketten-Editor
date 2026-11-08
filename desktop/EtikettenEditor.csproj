@@ -4,11 +4,13 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <Configurations>Debug;Release;InternalDebug</Configurations>
-    <Version>1.1.2</Version>
+    <AssemblyName>EtikettenEditor</AssemblyName>
+    <RootNamespace>LabelEditor.Desktop</RootNamespace>
+    <Version>1.2.0</Version>
     <Company>Tariq Alsalem</Company>
     <Authors>Tariq Alsalem</Authors>
     <Product>Etiketten Editor</Product>
-    <ApplicationIcon>assets\FuniturenEditor.ico</ApplicationIcon>
+    <ApplicationIcon>assets\EtikettenEditor.ico</ApplicationIcon>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
@@ -31,9 +33,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="FuniturenEditor.WinUI\**\*.cs" />
-    <Page Remove="FuniturenEditor.WinUI\**\*.xaml" />
-    <Resource Include="assets\FuniturenEditor.ico" />
+    <Compile Remove="LabelEditor.WinUI\**\*.cs" />
+    <Page Remove="LabelEditor.WinUI\**\*.xaml" />
+    <Resource Include="assets\EtikettenEditor.ico" />
+    <Resource Include="assets\help\*.png" />
     <Resource Include="..\Icons\barcode-scan-icon.svg" Link="assets\icons\barcode-scan-icon.svg" />
     <Resource Include="..\Icons\download-bold-arrow-icon.svg" Link="assets\icons\download-bold-arrow-icon.svg" />
     <Resource Include="..\Icons\find-icon.svg" Link="assets\icons\find-icon.svg" />
@@ -41,6 +44,8 @@
     <Resource Include="..\Icons\folder-plus-icon.svg" Link="assets\icons\folder-plus-icon.svg" />
     <Resource Include="..\Icons\folder-rename-icon.svg" Link="assets\icons\folder-rename-icon.svg" />
     <Resource Include="..\Icons\input-icon.svg" Link="assets\icons\input-icon.svg" />
+    <Resource Include="..\Icons\eye.png" Link="assets\icons\eye.png" />
+    <Resource Include="..\Icons\eye closed.png" Link="assets\icons\eye-closed.png" />
     <Resource Include="..\Icons\pdf-icon.svg" Link="assets\icons\pdf-icon.svg" />
     <Resource Include="..\Icons\print-icon.svg" Link="assets\icons\print-icon.svg" />
   </ItemGroup>

@@ -2,7 +2,7 @@ using System.IO;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
-namespace FuniturenEditor.Desktop;
+namespace LabelEditor.Desktop;
 
 public sealed class LocalStore
 {
@@ -49,7 +49,32 @@ public sealed class LocalStore
                 Json TEXT NOT NULL,
                 UpdatedAtUtc TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS UiSettings (
+                Id INTEGER PRIMARY KEY CHECK (Id = 1),
+                PreviewWidthRatio REAL NOT NULL
+            );
             """;
+        command.ExecuteNonQuery();
+    }
+
+    public double LoadPreviewWidthRatio()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT PreviewWidthRatio FROM UiSettings WHERE Id = 1;";
+        var value = command.ExecuteScalar();
+        return value is null or DBNull ? 0.4 : Convert.ToDouble(value);
+    }
+
+    public void SavePreviewWidthRatio(double ratio)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO UiSettings (Id, PreviewWidthRatio) VALUES (1, $ratio)
+            ON CONFLICT(Id) DO UPDATE SET PreviewWidthRatio = excluded.PreviewWidthRatio;
+            """;
+        command.Parameters.AddWithValue("$ratio", ratio);
         command.ExecuteNonQuery();
     }
 

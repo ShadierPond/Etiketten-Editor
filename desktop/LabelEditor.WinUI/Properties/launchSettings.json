@@ -1,9 +1,9 @@
 {
   "profiles": {
-    "FuniturenEditor.WinUI (Package)": {
+    "LabelEditor.WinUI (Package)": {
       "commandName": "MsixPackage"
     },
-    "FuniturenEditor.WinUI (Unpackaged)": {
+    "LabelEditor.WinUI (Unpackaged)": {
       "commandName": "Project"
     }
   }

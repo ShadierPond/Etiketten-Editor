@@ -1,26 +1,31 @@
+using System.IO;
 using System.Globalization;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Media.Imaging;
+using Microsoft.Win32;
 
-namespace FuniturenEditor.Desktop;
+namespace LabelEditor.Desktop;
 
-public sealed class FurnitureLayoutWindow : Window
+public sealed class LabelLayoutWindow : Window
 {
     private readonly CatalogData catalog;
     private readonly CatalogItem sample;
     private readonly PhotoLibrary photoLibrary;
-    private readonly FurniturePrintLayout draft;
+    private readonly LabelPrintLayout draft;
     private readonly ComboBox elementSelector = new();
     private readonly TextBox fieldNameBox = new();
     private readonly ComboBox orientationSelector = new();
     private readonly ComboBox paperFormatSelector = new();
     private readonly ComboBox kindSelector = new();
-    private readonly TextBox numberSuffixBox = new();
-    private readonly StackPanel numberSuffixPanel = new();
+    private readonly TextBox fieldPrefixBox = new();
+    private readonly TextBox fieldSuffixBox = new();
+    private readonly StackPanel fieldAffixesPanel = new();
     private readonly Viewbox sheetPreview = new()
     {
         Stretch = Stretch.Uniform,
@@ -36,11 +41,11 @@ public sealed class FurnitureLayoutWindow : Window
     private readonly TextBox verticalGapBox = new();
     private readonly TextBox columnsBox = new();
     private readonly TextBox tileCountBox = new();
+    private readonly ComboBox tileGridAlignmentSelector = new();
     private readonly ComboBox qrSourceBox = new();
     private readonly ComboBox qrFallbackBox = new();
+    private readonly StackPanel qrSettingsPanel = new();
     private readonly StackPanel qrFallbackPanel = new();
-    private readonly TextBox qrPrefixBox = new();
-    private readonly TextBox qrSuffixBox = new();
     private readonly CheckBox qrEnabledCheckBox = new() { Content = "QR-/Barcode-Erzeugung aktiv" };
     private readonly CheckBox qrFallbackCheckBox = new() { Content = "Fallback verwenden" };
     private readonly TextBox cellWidthBox = new();
@@ -52,7 +57,13 @@ public sealed class FurnitureLayoutWindow : Window
     private readonly TextBox fontSizeBox = new();
     private readonly TextBox rotationBox = new();
     private readonly TextBox missingBecoTextBox = new();
+    private readonly Button chooseCompanyLogoButton = new() { Content = "Firmenlogo auswählen…" };
+    private readonly Button removeCompanyLogoButton = new() { Content = "Logo entfernen" };
     private readonly CheckBox boldCheckBox = new() { Content = "Fett darstellen" };
+    private readonly CheckBox italicCheckBox = new() { Content = "Kursiv" };
+    private readonly CheckBox underlineCheckBox = new() { Content = "Unterstrichen" };
+    private readonly ComboBox textAlignmentSelector = new();
+    private readonly WrapPanel textFormattingPanel = new();
     private readonly CheckBox autoShrinkTextCheckBox = new()
     {
         Content = "Schrift automatisch verkleinern, damit die Beschreibung vollständig passt",
@@ -63,6 +74,15 @@ public sealed class FurnitureLayoutWindow : Window
     private readonly List<Thumb> resizeGrips = [];
     private readonly List<PrintElementLayout> overlapCycle = [];
     private Canvas? previewCanvas;
+    private Canvas? sheetPreviewCanvas;
+    private Image? companyLogoPreview;
+    private Rectangle? companyLogoSelectionOutline;
+    private readonly List<Thumb> companyLogoResizeGrips = [];
+    private string? pendingCompanyLogoPath;
+    private bool isDraggingCompanyLogo;
+    private Point companyLogoDragStart;
+    private double companyLogoDragStartX;
+    private double companyLogoDragStartY;
     private Rectangle? selectionOutline;
     private Line? verticalSnapGuide;
     private Line? horizontalSnapGuide;
@@ -77,17 +97,19 @@ public sealed class FurnitureLayoutWindow : Window
     private Point numericDragStartPoint;
     private double numericDragStartValue;
     private double numericDragStep;
+    private FrameworkElement? numericDragHandle;
     private bool isNumericDragging;
     private int overlapCycleIndex;
     private const double SnapToleranceCm = 0.12;
 
-    public FurniturePrintLayout Result { get; }
+    public LabelPrintLayout Result { get; }
+    public string? PendingCompanyLogoPath => pendingCompanyLogoPath;
 
-    public FurnitureLayoutWindow(
+    public LabelLayoutWindow(
         CatalogData catalog,
         CatalogItem sample,
         PhotoLibrary photoLibrary,
-        FurniturePrintLayout currentLayout)
+        LabelPrintLayout currentLayout)
     {
         this.catalog = catalog;
         this.sample = sample;
@@ -204,6 +226,51 @@ public sealed class FurnitureLayoutWindow : Window
         paperFormatSelector.Padding = new Thickness(7, 1, 4, 1);
         paperFormatSelector.Margin = new Thickness(0, 0, 0, 8);
         generalForm.Children.Add(paperFormatSelector);
+        generalForm.Children.Add(new TextBlock { Text = "Kachelraster auf Blatt ausrichten" });
+        tileGridAlignmentSelector.ItemsSource = new[]
+        {
+            new LayoutChoice("Oben links", "TopLeft"),
+            new LayoutChoice("Oben Mitte", "TopCenter"),
+            new LayoutChoice("Oben rechts", "TopRight"),
+            new LayoutChoice("Mitte links", "MiddleLeft"),
+            new LayoutChoice("Mitte", "Center"),
+            new LayoutChoice("Mitte rechts", "MiddleRight"),
+            new LayoutChoice("Unten links", "BottomLeft"),
+            new LayoutChoice("Unten Mitte", "BottomCenter"),
+            new LayoutChoice("Unten rechts", "BottomRight")
+        };
+        tileGridAlignmentSelector.DisplayMemberPath = nameof(LayoutChoice.Name);
+        tileGridAlignmentSelector.SelectedValuePath = nameof(LayoutChoice.Key);
+        AutomationProperties.SetName(tileGridAlignmentSelector, "Kachelraster auf Blatt ausrichten");
+        tileGridAlignmentSelector.MinHeight = 0;
+        tileGridAlignmentSelector.Height = 30;
+        tileGridAlignmentSelector.Width = 220;
+        tileGridAlignmentSelector.HorizontalAlignment = HorizontalAlignment.Left;
+        tileGridAlignmentSelector.VerticalContentAlignment = VerticalAlignment.Center;
+        tileGridAlignmentSelector.Padding = new Thickness(7, 1, 4, 1);
+        tileGridAlignmentSelector.Margin = new Thickness(0, 2, 0, 8);
+        generalForm.Children.Add(tileGridAlignmentSelector);
+        AddSectionHeading(generalForm, "Firmenlogo auf dem Blatt");
+        var logoButtons = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
+        chooseCompanyLogoButton.Margin = new Thickness(0, 0, 6, 4);
+        removeCompanyLogoButton.Margin = new Thickness(0, 0, 0, 4);
+        chooseCompanyLogoButton.Click += ChooseCompanyLogo_Click;
+        removeCompanyLogoButton.Click += (_, _) =>
+        {
+            pendingCompanyLogoPath = null;
+            draft.LogoPhotoKey = "";
+            RefreshGeneralPreview();
+        };
+        logoButtons.Children.Add(chooseCompanyLogoButton);
+        logoButtons.Children.Add(removeCompanyLogoButton);
+        generalForm.Children.Add(logoButtons);
+        generalForm.Children.Add(new TextBlock
+        {
+            Text = "Das Logo erscheint auf jedem Blatt. Ziehe es in der Vorschau an die gewünschte Stelle; ändere die Größe mit den Ziehpunkten am Rahmen.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Color.FromRgb(101, 117, 134)),
+            Margin = new Thickness(0, 0, 0, 8)
+        });
         var gridSettings = new Grid();
         gridSettings.ColumnDefinitions.Add(new ColumnDefinition());
         gridSettings.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
@@ -282,20 +349,25 @@ public sealed class FurnitureLayoutWindow : Window
         kindSelector.HorizontalAlignment = HorizontalAlignment.Left;
         kindSelector.Padding = new Thickness(7, 1, 4, 1);
         labelForm.Children.Add(kindSelector);
-        numberSuffixPanel.Margin = new Thickness(0, 4, 0, 6);
-        numberSuffixPanel.Children.Add(new TextBlock
+        fieldAffixesPanel.Margin = new Thickness(0, 4, 0, 6);
+        fieldAffixesPanel.Children.Add(new TextBlock
         {
-            Text = "Zahl-Suffix (z. B. €, CHF, kg)",
+            Text = "Feld-Präfix",
             Foreground = new SolidColorBrush(Color.FromRgb(67, 87, 106))
         });
-        numberSuffixPanel.Children.Add(numberSuffixBox);
-        numberSuffixBox.MinHeight = 0;
-        numberSuffixBox.Height = 30;
-        numberSuffixBox.Width = 210;
-        numberSuffixBox.HorizontalAlignment = HorizontalAlignment.Left;
-        numberSuffixBox.Padding = new Thickness(7, 1, 4, 1);
-        numberSuffixPanel.Visibility = Visibility.Collapsed;
-        labelForm.Children.Add(numberSuffixPanel);
+        ConfigureTextInput(fieldPrefixBox, width: 280);
+        fieldPrefixBox.ToolTip = "Text, der vor dem Feldwert gedruckt wird";
+        fieldAffixesPanel.Children.Add(fieldPrefixBox);
+        fieldAffixesPanel.Children.Add(new TextBlock
+        {
+            Text = "Feld-Suffix",
+            Margin = new Thickness(0, 4, 0, 0),
+            Foreground = new SolidColorBrush(Color.FromRgb(67, 87, 106))
+        });
+        ConfigureTextInput(fieldSuffixBox, width: 280);
+        fieldSuffixBox.ToolTip = "Text, der nach dem Feldwert gedruckt wird";
+        fieldAffixesPanel.Children.Add(fieldSuffixBox);
+        labelForm.Children.Add(fieldAffixesPanel);
 
         var positionGrid = new Grid();
         positionGrid.ColumnDefinitions.Add(new ColumnDefinition());
@@ -313,9 +385,34 @@ public sealed class FurnitureLayoutWindow : Window
         AddNumericField(positionGrid, "Drehung (°)", rotationBox, 1, 2, 2);
         AddSectionHeading(labelForm, "Position und Darstellung");
         labelForm.Children.Add(positionGrid);
-        boldCheckBox.Margin = new Thickness(0, 8, 0, 0);
-        boldCheckBox.Visibility = Visibility.Collapsed;
-        labelForm.Children.Add(boldCheckBox);
+        textFormattingPanel.Margin = new Thickness(0, 8, 0, 0);
+        boldCheckBox.Margin = new Thickness(0, 0, 8, 0);
+        italicCheckBox.Margin = new Thickness(0, 0, 8, 0);
+        underlineCheckBox.Margin = new Thickness(0, 0, 8, 0);
+        textFormattingPanel.Children.Add(boldCheckBox);
+        textFormattingPanel.Children.Add(italicCheckBox);
+        textFormattingPanel.Children.Add(underlineCheckBox);
+        textAlignmentSelector.ItemsSource = new[]
+        {
+            new LayoutChoice("Links", "Left"),
+            new LayoutChoice("Mittig", "Center"),
+            new LayoutChoice("Rechts", "Right")
+        };
+        textAlignmentSelector.DisplayMemberPath = nameof(LayoutChoice.Name);
+        textAlignmentSelector.SelectedValuePath = nameof(LayoutChoice.Key);
+        textAlignmentSelector.Width = 105;
+        textAlignmentSelector.Height = 30;
+        textAlignmentSelector.Margin = new Thickness(8, 0, 0, 0);
+        textAlignmentSelector.ToolTip = "Textausrichtung";
+        textFormattingPanel.Children.Add(new TextBlock
+        {
+            Text = "Ausrichtung",
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 4, 0)
+        });
+        textFormattingPanel.Children.Add(textAlignmentSelector);
+        textFormattingPanel.Visibility = Visibility.Collapsed;
+        labelForm.Children.Add(textFormattingPanel);
         autoShrinkTextCheckBox.Margin = new Thickness(0, 8, 0, 0);
         labelForm.Children.Add(autoShrinkTextCheckBox);
         missingBecoTextPanel.Margin = new Thickness(0, 8, 0, 0);
@@ -327,33 +424,24 @@ public sealed class FurnitureLayoutWindow : Window
         missingBecoTextBox.MinWidth = 100;
         missingBecoTextPanel.Children.Add(missingBecoTextBox);
         labelForm.Children.Add(missingBecoTextPanel);
-        AddSectionHeading(labelForm, "QR-/Barcode-Einstellungen");
-        labelForm.Children.Add(qrEnabledCheckBox);
-        labelForm.Children.Add(new TextBlock { Text = "Primärfeld", Margin = new Thickness(0, 4, 0, 0) });
-        labelForm.Children.Add(qrSourceBox);
+        AddSectionHeading(qrSettingsPanel, "QR-/Barcode-Einstellungen");
+        qrSettingsPanel.Children.Add(qrEnabledCheckBox);
+        qrSettingsPanel.Children.Add(new TextBlock { Text = "Primärfeld", Margin = new Thickness(0, 4, 0, 0) });
+        qrSettingsPanel.Children.Add(qrSourceBox);
         qrFallbackPanel.Margin = new Thickness(0, 4, 0, 0);
         qrFallbackPanel.Children.Add(new TextBlock { Text = "Fallbackfeld" });
         qrFallbackPanel.Children.Add(qrFallbackBox);
-        labelForm.Children.Add(qrFallbackCheckBox);
-        labelForm.Children.Add(qrFallbackPanel);
-        labelForm.Children.Add(new TextBlock { Text = "Präfix" });
-        labelForm.Children.Add(qrPrefixBox);
-        labelForm.Children.Add(new TextBlock { Text = "Suffix" });
-        labelForm.Children.Add(qrSuffixBox);
+        qrSettingsPanel.Children.Add(qrFallbackCheckBox);
+        qrSettingsPanel.Children.Add(qrFallbackPanel);
+        labelForm.Children.Add(qrSettingsPanel);
         foreach (var input in new[] { elementSelector, qrSourceBox, qrFallbackBox })
         {
             input.Width = 210;
             input.HorizontalAlignment = HorizontalAlignment.Left;
         }
-        foreach (var input in new[] { qrPrefixBox, qrSuffixBox })
-        {
-            input.Width = 210;
-            input.Height = 34;
-            input.HorizontalAlignment = HorizontalAlignment.Left;
-        }
         var note = new TextBlock
         {
-            Text = "Element links auswählen und in der Vorschau ziehen. Rechtsklick schaltet überlappende Elemente durch. Die blaue Kontur markiert die Auswahl; die Griffe verändern die Größe. Zahleneingaben lassen sich über die Pfeile oder durch horizontales Ziehen bei gedrückter Maustaste ändern.",
+            Text = "Element links auswählen und in der Vorschau ziehen. Dünne Konturen zeigen alle Feldbereiche; die blaue Kontur markiert die Auswahl und die Griffe verändern die Größe. Für Textfelder lassen sich Fett, Kursiv, Unterstreichung und Ausrichtung einstellen. Rechtsklick schaltet überlappende Elemente durch. Zahleneingaben lassen sich über die Pfeile oder durch horizontales Ziehen bei gedrückter Maustaste ändern.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = new SolidColorBrush(Color.FromRgb(101, 117, 134)),
             Margin = new Thickness(0, 16, 0, 0)
@@ -405,6 +493,7 @@ public sealed class FurnitureLayoutWindow : Window
         cellHeightBox.TextChanged += CellSize_Changed;
         orientationSelector.SelectionChanged += LayoutSettings_Changed;
         paperFormatSelector.SelectionChanged += LayoutSettings_Changed;
+        tileGridAlignmentSelector.SelectionChanged += LayoutSettings_Changed;
         horizontalGapBox.TextChanged += LayoutSettings_Changed;
         verticalGapBox.TextChanged += LayoutSettings_Changed;
         columnsBox.TextChanged += LayoutSettings_Changed;
@@ -412,7 +501,8 @@ public sealed class FurnitureLayoutWindow : Window
         elementSelector.SelectionChanged += ElementSelector_SelectionChanged;
         fieldNameBox.TextChanged += FieldName_Changed;
         kindSelector.SelectionChanged += ElementSettings_Changed;
-        numberSuffixBox.TextChanged += NumberSuffix_Changed;
+        fieldPrefixBox.TextChanged += FieldAffixes_Changed;
+        fieldSuffixBox.TextChanged += FieldAffixes_Changed;
         xBox.TextChanged += Element_Changed;
         yBox.TextChanged += Element_Changed;
         widthBox.TextChanged += Element_Changed;
@@ -421,6 +511,11 @@ public sealed class FurnitureLayoutWindow : Window
         rotationBox.TextChanged += Element_Changed;
         boldCheckBox.Checked += Element_Changed;
         boldCheckBox.Unchecked += Element_Changed;
+        italicCheckBox.Checked += TextFormatting_Changed;
+        italicCheckBox.Unchecked += TextFormatting_Changed;
+        underlineCheckBox.Checked += TextFormatting_Changed;
+        underlineCheckBox.Unchecked += TextFormatting_Changed;
+        textAlignmentSelector.SelectionChanged += TextFormatting_Changed;
         autoShrinkTextCheckBox.Checked += Element_Changed;
         autoShrinkTextCheckBox.Unchecked += Element_Changed;
         missingBecoTextBox.TextChanged += MissingBecoText_Changed;
@@ -430,8 +525,6 @@ public sealed class FurnitureLayoutWindow : Window
         qrFallbackCheckBox.Unchecked += QrSettings_Changed;
         qrSourceBox.SelectionChanged += QrSettings_Changed;
         qrFallbackBox.SelectionChanged += QrSettings_Changed;
-        qrPrefixBox.TextChanged += QrSettings_Changed;
-        qrSuffixBox.TextChanged += QrSettings_Changed;
         foreach (var numericField in new[]
         {
             cellWidthBox, cellHeightBox, xBox, yBox, widthBox, heightBox, fontSizeBox, rotationBox
@@ -461,12 +554,20 @@ public sealed class FurnitureLayoutWindow : Window
         contentHost.SetValue(FrameworkElement.MarginProperty, new Thickness(0));
         contentHost.SetValue(KeyboardNavigation.TabIndexProperty, 2);
 
+        var contentBorder = new FrameworkElementFactory(typeof(Border), "ContentBorder");
+        contentBorder.SetValue(Border.BackgroundProperty, Brushes.White);
+        contentBorder.SetValue(Border.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(216, 224, 232)));
+        contentBorder.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        contentBorder.SetValue(Border.CornerRadiusProperty, new CornerRadius(8));
+        contentBorder.SetValue(Border.ClipToBoundsProperty, true);
+        contentBorder.AppendChild(contentHost);
+
         var tabControlPanel = new FrameworkElementFactory(typeof(DockPanel));
         tabControlPanel.SetValue(DockPanel.LastChildFillProperty, true);
         tabControlPanel.SetValue(KeyboardNavigation.TabNavigationProperty, KeyboardNavigationMode.Local);
         tabControlPanel.SetValue(UIElement.SnapsToDevicePixelsProperty, true);
         tabControlPanel.AppendChild(tabPanel);
-        tabControlPanel.AppendChild(contentHost);
+        tabControlPanel.AppendChild(contentBorder);
 
         settingsTabs.Template = new ControlTemplate(typeof(TabControl))
         {
@@ -547,6 +648,49 @@ public sealed class FurnitureLayoutWindow : Window
         RefreshPreview();
     }
 
+    private void ChooseCompanyLogo_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Firmenlogo auswählen",
+            Filter = "Bilddateien|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.tif;*.tiff;*.svg",
+            CheckFileExists = true
+        };
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        try
+        {
+            if (System.IO.Path.GetExtension(dialog.FileName).Equals(".svg", StringComparison.OrdinalIgnoreCase))
+            {
+                using var stream = File.OpenRead(dialog.FileName);
+                _ = SvgImageConverter.LoadDrawingImage(stream);
+            }
+            else
+            {
+                _ = LoadBitmap(dialog.FileName);
+            }
+            pendingCompanyLogoPath = dialog.FileName;
+            RefreshGeneralPreview();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or InvalidOperationException or FormatException or ArgumentException or OutOfMemoryException)
+        {
+            MessageBox.Show(this, $"Die Bilddatei kann nicht als Firmenlogo verwendet werden.\n\n{ex.Message}",
+                "Katalogvorlage", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private static BitmapImage LoadBitmap(string path)
+    {
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        bitmap.UriSource = new Uri(path, UriKind.Absolute);
+        bitmap.EndInit();
+        bitmap.Freeze();
+        return bitmap;
+    }
+
     private void LayoutSettings_Changed(object sender, EventArgs e)
     {
         if (isUpdating)
@@ -556,6 +700,8 @@ public sealed class FurnitureLayoutWindow : Window
             draft.Orientation = orientation;
         if (paperFormatSelector.SelectedValue is string paperFormat)
             draft.PaperFormat = paperFormat;
+        if (tileGridAlignmentSelector.SelectedValue is string gridAlignment)
+            draft.TileGridAlignment = gridAlignment;
         if (TryRead(horizontalGapBox, out var horizontalGap))
             draft.HorizontalGapCm = horizontalGap;
         if (TryRead(verticalGapBox, out var verticalGap))
@@ -573,23 +719,33 @@ public sealed class FurnitureLayoutWindow : Window
         if (isUpdating || currentElement is null)
             return;
         currentElement.Kind = kindSelector.SelectedValue as string ?? currentElement.Kind;
-        if (currentElement.Kind != "Text")
+        if (currentElement.Kind is not ("Text" or "Number"))
+        {
             currentElement.Bold = false;
-        if (currentElement.Kind == "Number" && string.IsNullOrEmpty(currentElement.Suffix))
+            currentElement.Italic = false;
+            currentElement.Underline = false;
+        }
+        if (currentElement.Kind == "Number" && string.IsNullOrEmpty(currentElement.Suffix) &&
+            currentElement.Source is "Price" or "Ek")
             currentElement.Suffix = " €";
-        numberSuffixBox.Text = currentElement.Suffix;
         LoadElementFields();
-        numberSuffixPanel.Visibility = currentElement.Kind == "Number"
-            ? Visibility.Visible
-            : Visibility.Collapsed;
         RefreshPreview();
     }
 
-    private void NumberSuffix_Changed(object sender, TextChangedEventArgs e)
+    private void FieldAffixes_Changed(object sender, TextChangedEventArgs e)
     {
         if (isUpdating || currentElement is null)
             return;
-        currentElement.Suffix = numberSuffixBox.Text;
+        currentElement.Prefix = fieldPrefixBox.Text;
+        currentElement.Suffix = fieldSuffixBox.Text;
+        RefreshPreview();
+    }
+
+    private void TextFormatting_Changed(object sender, EventArgs e)
+    {
+        if (isUpdating)
+            return;
+        SaveSelectedElement();
         RefreshPreview();
     }
 
@@ -597,10 +753,8 @@ public sealed class FurnitureLayoutWindow : Window
     {
         if (isUpdating || currentElement is null)
             return;
-        var name = fieldNameBox.Text.Trim();
-        if (name.Length > 0)
-            currentElement.Name = name;
-        RefreshElementSelector(currentElement);
+        currentElement.Name = fieldNameBox.Text;
+        RefreshElementSelector(currentElement, reloadFields: false);
         RefreshPreview();
     }
 
@@ -612,8 +766,6 @@ public sealed class FurnitureLayoutWindow : Window
         draft.QrCode.UseFallback = qrFallbackCheckBox.IsChecked == true;
         draft.QrCode.SourceField = qrSourceBox.SelectedValue as string ?? draft.QrCode.SourceField;
         draft.QrCode.FallbackField = qrFallbackBox.SelectedValue as string ?? draft.QrCode.FallbackField;
-        draft.QrCode.Prefix = qrPrefixBox.Text;
-        draft.QrCode.Suffix = qrSuffixBox.Text;
         draft.QrCode.Normalize();
         qrFallbackPanel.Visibility = qrFallbackCheckBox.IsChecked == true
             ? Visibility.Visible
@@ -653,7 +805,7 @@ public sealed class FurnitureLayoutWindow : Window
         RefreshPreview();
     }
 
-    private void RefreshElementSelector(PrintElementLayout? selected = null)
+    private void RefreshElementSelector(PrintElementLayout? selected = null, bool reloadFields = true)
     {
         isUpdating = true;
         elementSelector.ItemsSource = draft.Fields
@@ -663,7 +815,8 @@ public sealed class FurnitureLayoutWindow : Window
         if (elementSelector.SelectedIndex < 0 && elementSelector.Items.Count > 0)
             elementSelector.SelectedIndex = 0;
         isUpdating = false;
-        LoadElementFields();
+        if (reloadFields)
+            LoadElementFields();
     }
 
     private bool SaveCellSize()
@@ -735,25 +888,28 @@ public sealed class FurnitureLayoutWindow : Window
 
     private void NumericField_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (sender is not TextBox box || !TryRead(box, out var value))
+        if (sender is not FrameworkElement { Tag: TextBox box } handle || !TryRead(box, out var value))
             return;
 
         numericDragBox = box;
-        numericDragStartPoint = e.GetPosition(box);
+        numericDragHandle = handle;
+        numericDragStartPoint = e.GetPosition(handle);
         numericDragStartValue = value;
         numericDragStep = (double)box.Tag;
         isNumericDragging = false;
-        box.CaptureMouse();
+        handle.CaptureMouse();
+        e.Handled = true;
     }
 
     private void NumericField_PreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if (sender is not TextBox box ||
-            !ReferenceEquals(box, numericDragBox) ||
+        if (sender is not FrameworkElement handle ||
+            !ReferenceEquals(handle, numericDragHandle) ||
+            numericDragBox is not { } box ||
             e.LeftButton != MouseButtonState.Pressed)
             return;
 
-        var horizontalDistance = e.GetPosition(box).X - numericDragStartPoint.X;
+        var horizontalDistance = e.GetPosition(handle).X - numericDragStartPoint.X;
         var steps = (int)Math.Truncate(horizontalDistance / 8);
         if (steps == 0)
             return;
@@ -765,11 +921,14 @@ public sealed class FurnitureLayoutWindow : Window
 
     private void NumericField_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (sender is not TextBox box || !ReferenceEquals(box, numericDragBox))
+        if (sender is not FrameworkElement handle ||
+            !ReferenceEquals(handle, numericDragHandle) ||
+            numericDragBox is not { } box)
             return;
 
         var wasDragging = isNumericDragging;
-        box.ReleaseMouseCapture();
+        numericDragHandle = null;
+        handle.ReleaseMouseCapture();
         FinishNumericDrag(box);
         if (wasDragging)
             e.Handled = true;
@@ -777,8 +936,13 @@ public sealed class FurnitureLayoutWindow : Window
 
     private void NumericField_LostMouseCapture(object sender, MouseEventArgs e)
     {
-        if (sender is TextBox box && ReferenceEquals(box, numericDragBox))
+        if (sender is FrameworkElement handle &&
+            ReferenceEquals(handle, numericDragHandle) &&
+            numericDragBox is { } box)
+        {
+            numericDragHandle = null;
             FinishNumericDrag(box);
+        }
     }
 
     private void FinishNumericDrag(TextBox box)
@@ -821,9 +985,14 @@ public sealed class FurnitureLayoutWindow : Window
         element.Height = Math.Clamp(height, 0, draft.CellHeightCm - element.Y);
         element.FontSize = Math.Clamp(fontSize, 4, 24);
         element.RotationDegrees = Math.Clamp(rotation, -180, 180);
-        element.Bold = element.Kind == "Text" && boldCheckBox.IsChecked == true;
+        var supportsTextFormatting = element.Kind is "Text" or "Number";
+        element.Bold = supportsTextFormatting && boldCheckBox.IsChecked == true;
+        element.Italic = supportsTextFormatting && italicCheckBox.IsChecked == true;
+        element.Underline = supportsTextFormatting && underlineCheckBox.IsChecked == true;
+        element.TextAlignment = textAlignmentSelector.SelectedValue as string ?? "Center";
         element.AutoShrinkText = autoShrinkTextCheckBox.IsChecked == true;
-        element.Suffix = numberSuffixBox.Text;
+        element.Prefix = fieldPrefixBox.Text;
+        element.Suffix = fieldSuffixBox.Text;
         if (!string.IsNullOrWhiteSpace(fieldNameBox.Text))
             element.Name = fieldNameBox.Text.Trim();
     }
@@ -835,6 +1004,7 @@ public sealed class FurnitureLayoutWindow : Window
         cellHeightBox.Text = Format(draft.CellHeightCm);
         orientationSelector.SelectedValue = draft.Orientation;
         paperFormatSelector.SelectedValue = draft.PaperFormat;
+        tileGridAlignmentSelector.SelectedValue = draft.TileGridAlignment;
         horizontalGapBox.Text = Format(draft.HorizontalGapCm);
         verticalGapBox.Text = Format(draft.VerticalGapCm);
         columnsBox.Text = draft.Columns.ToString(CultureInfo.CurrentCulture);
@@ -844,8 +1014,6 @@ public sealed class FurnitureLayoutWindow : Window
         RefreshQrFieldOptions();
         qrSourceBox.SelectedValue = draft.QrCode.SourceField;
         qrFallbackBox.SelectedValue = draft.QrCode.FallbackField;
-        qrPrefixBox.Text = draft.QrCode.Prefix;
-        qrSuffixBox.Text = draft.QrCode.Suffix;
         RefreshElementSelector(currentElement);
         isUpdating = false;
         LoadElementFields();
@@ -864,17 +1032,32 @@ public sealed class FurnitureLayoutWindow : Window
         rotationBox.Text = item is null ? "" : Format(item.RotationDegrees);
         fieldNameBox.Text = item?.Name ?? "";
         kindSelector.SelectedValue = item?.Kind;
-        numberSuffixBox.Text = item?.Suffix ?? "";
-        numberSuffixPanel.Visibility = item?.Kind == "Number"
+        fieldPrefixBox.Text = item?.Prefix ?? "";
+        fieldSuffixBox.Text = item?.Suffix ?? "";
+        var isCodeField = item?.Kind is "Qr" or "Barcode";
+        fieldPrefixBox.ToolTip = isCodeField
+            ? "Text, der vor dem Wert im QR-/Barcode-Inhalt erscheint"
+            : "Text, der vor dem Feldwert gedruckt wird";
+        fieldSuffixBox.ToolTip = isCodeField
+            ? "Text, der nach dem Wert im QR-/Barcode-Inhalt erscheint"
+            : "Text, der nach dem Feldwert gedruckt wird";
+        qrSettingsPanel.Visibility = isCodeField
             ? Visibility.Visible
             : Visibility.Collapsed;
-        boldCheckBox.Visibility = item?.Kind == "Text"
+        fieldAffixesPanel.Visibility = item?.Kind == "Photo"
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        var supportsTextFormatting = item?.Kind is "Text" or "Number";
+        textFormattingPanel.Visibility = supportsTextFormatting
             ? Visibility.Visible
             : Visibility.Collapsed;
         qrFallbackPanel.Visibility = draft.QrCode.UseFallback
             ? Visibility.Visible
             : Visibility.Collapsed;
         boldCheckBox.IsChecked = item?.Bold == true;
+        italicCheckBox.IsChecked = item?.Italic == true;
+        underlineCheckBox.IsChecked = item?.Underline == true;
+        textAlignmentSelector.SelectedValue = item?.TextAlignment ?? "Center";
         autoShrinkTextCheckBox.Visibility = item?.Kind == "Text"
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -921,7 +1104,7 @@ public sealed class FurnitureLayoutWindow : Window
                 previewCanvas.Children.Remove(grip);
         }
 
-        var cell = PrintService.CreateFurnitureCellPreview(catalog, sample, photoLibrary, draft);
+        var cell = PrintService.CreateLabelCellPreview(catalog, sample, photoLibrary, draft);
         previewCanvas = cell.Child as Canvas;
         if (previewCanvas is not null)
         {
@@ -960,7 +1143,7 @@ public sealed class FurnitureLayoutWindow : Window
     {
         draft.Normalize();
         var portrait = draft.Orientation == "Portrait";
-        var (paperWidthCm, paperHeightCm) = FurniturePrintLayout.GetPaperDimensionsCm(draft.PaperFormat);
+        var (paperWidthCm, paperHeightCm) = LabelPrintLayout.GetPaperDimensionsCm(draft.PaperFormat);
         var pageWidthCm = portrait ? paperWidthCm : paperHeightCm;
         var pageHeightCm = portrait ? paperHeightCm : paperWidthCm;
         const double scale = 14;
@@ -995,8 +1178,11 @@ public sealed class FurnitureLayoutWindow : Window
         var rows = Math.Max(1, (int)Math.Ceiling(itemsOnPage / (double)columns));
         var totalWidth = columns * labelWidth + Math.Max(0, columns - 1) * gapX;
         var totalHeight = rows * labelHeight + Math.Max(0, rows - 1) * gapY;
-        var left = Math.Max(pageMargin, (pageWidth - totalWidth) / 2);
-        var top = Math.Max(headerHeight, headerHeight + (pageHeight - headerHeight - totalHeight) / 2);
+        var (horizontalAlignment, verticalAlignment) = draft.GetTileGridAlignmentFactors();
+        var availableWidth = Math.Max(0, pageWidth - pageMargin * 2 - totalWidth);
+        var availableHeight = Math.Max(0, pageHeight - headerHeight - pageMargin - totalHeight);
+        var left = pageMargin + availableWidth * horizontalAlignment;
+        var top = headerHeight + availableHeight * verticalAlignment;
         canvas.Children.Add(new TextBlock
         {
             Text = $"{draft.PaperFormat} · {(portrait ? "Hochformat" : "Querformat")}",
@@ -1038,6 +1224,204 @@ public sealed class FurnitureLayoutWindow : Window
             Canvas.SetTop(canvas.Children[^1], pageHeight - 18);
         }
         sheetPreview.Child = canvas;
+        sheetPreviewCanvas = canvas;
+        companyLogoPreview = null;
+        companyLogoSelectionOutline = null;
+        companyLogoResizeGrips.Clear();
+        var logoPath = pendingCompanyLogoPath ?? photoLibrary.GetPhotoPath(catalog, draft.LogoPhotoKey);
+        removeCompanyLogoButton.IsEnabled = logoPath is not null;
+        if (logoPath is not null)
+        {
+            var logo = new Image
+            {
+                Source = LoadLogoImageSource(logoPath),
+                Width = Math.Max(1, draft.LogoWidthCm * scale),
+                Height = Math.Max(1, draft.LogoHeightCm * scale),
+                Stretch = Stretch.Uniform,
+                Cursor = Cursors.SizeAll,
+                ToolTip = "Firmenlogo verschieben"
+            };
+            logo.PreviewMouseLeftButtonDown += CompanyLogo_PreviewMouseLeftButtonDown;
+            Canvas.SetLeft(logo, draft.LogoXcm * scale);
+            Canvas.SetTop(logo, draft.LogoYcm * scale);
+            Panel.SetZIndex(logo, 100);
+            canvas.Children.Add(logo);
+
+            var outline = new Rectangle
+            {
+                Width = logo.Width,
+                Height = logo.Height,
+                Fill = Brushes.Transparent,
+                Stroke = new SolidColorBrush(Color.FromRgb(30, 111, 190)),
+                StrokeThickness = 1.25,
+                StrokeDashArray = [3, 2],
+                IsHitTestVisible = false
+            };
+            Canvas.SetLeft(outline, draft.LogoXcm * scale);
+            Canvas.SetTop(outline, draft.LogoYcm * scale);
+            Panel.SetZIndex(outline, 101);
+            canvas.Children.Add(outline);
+
+            var handles = new (ResizeEdges Edges, Cursor Cursor)[]
+            {
+                (ResizeEdges.Left | ResizeEdges.Top, Cursors.SizeNWSE),
+                (ResizeEdges.Top, Cursors.SizeNS),
+                (ResizeEdges.Right | ResizeEdges.Top, Cursors.SizeNESW),
+                (ResizeEdges.Right, Cursors.SizeWE),
+                (ResizeEdges.Right | ResizeEdges.Bottom, Cursors.SizeNWSE),
+                (ResizeEdges.Bottom, Cursors.SizeNS),
+                (ResizeEdges.Left | ResizeEdges.Bottom, Cursors.SizeNESW),
+                (ResizeEdges.Left, Cursors.SizeWE)
+            };
+            foreach (var (edges, cursor) in handles)
+            {
+                var grip = new Thumb
+                {
+                    Width = 8,
+                    Height = 8,
+                    Background = new SolidColorBrush(Color.FromRgb(30, 111, 190)),
+                    BorderBrush = Brushes.White,
+                    BorderThickness = new Thickness(1),
+                    Cursor = cursor,
+                    Tag = edges,
+                    ToolTip = "Logo vergrößern oder verkleinern"
+                };
+                grip.DragDelta += CompanyLogoResizeGrip_DragDelta;
+                grip.DragCompleted += (_, _) =>
+                {
+                    draft.Normalize();
+                    RefreshGeneralPreview();
+                };
+                Panel.SetZIndex(grip, 102);
+                canvas.Children.Add(grip);
+                companyLogoResizeGrips.Add(grip);
+            }
+
+            companyLogoPreview = logo;
+            companyLogoSelectionOutline = outline;
+            UpdateCompanyLogoVisual(scale);
+            canvas.MouseMove += CompanyLogoCanvas_MouseMove;
+            canvas.MouseLeftButtonUp += CompanyLogoCanvas_MouseLeftButtonUp;
+        }
+
+    }
+
+    private static ImageSource LoadLogoImageSource(string path)
+    {
+        if (System.IO.Path.GetExtension(path).Equals(".svg", StringComparison.OrdinalIgnoreCase))
+        {
+            using var stream = File.OpenRead(path);
+            return SvgImageConverter.LoadDrawingImage(stream);
+        }
+
+        return LoadBitmap(path);
+    }
+
+    private void CompanyLogo_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not Image || sheetPreviewCanvas is null)
+            return;
+
+        isDraggingCompanyLogo = true;
+        companyLogoDragStart = e.GetPosition(sheetPreviewCanvas);
+        companyLogoDragStartX = draft.LogoXcm;
+        companyLogoDragStartY = draft.LogoYcm;
+        sheetPreviewCanvas.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void CompanyLogoCanvas_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!isDraggingCompanyLogo || sheetPreviewCanvas is null)
+            return;
+
+        var point = e.GetPosition(sheetPreviewCanvas);
+        var scale = sheetPreviewCanvas.Width /
+            (draft.Orientation == "Portrait"
+                ? LabelPrintLayout.GetPaperDimensionsCm(draft.PaperFormat).WidthCm
+                : LabelPrintLayout.GetPaperDimensionsCm(draft.PaperFormat).HeightCm);
+        draft.LogoXcm = Math.Clamp(companyLogoDragStartX + (point.X - companyLogoDragStart.X) / scale,
+            0, Math.Max(0, sheetPreviewCanvas.Width / scale - draft.LogoWidthCm));
+        draft.LogoYcm = Math.Clamp(companyLogoDragStartY + (point.Y - companyLogoDragStart.Y) / scale,
+            0, Math.Max(0, sheetPreviewCanvas.Height / scale - draft.LogoHeightCm));
+        UpdateCompanyLogoVisual(scale);
+    }
+
+    private void CompanyLogoCanvas_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!isDraggingCompanyLogo || sheetPreviewCanvas is null)
+            return;
+
+        isDraggingCompanyLogo = false;
+        sheetPreviewCanvas.ReleaseMouseCapture();
+        draft.Normalize();
+        RefreshGeneralPreview();
+    }
+
+    private void CompanyLogoResizeGrip_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (sheetPreviewCanvas is null || sender is not Thumb { Tag: ResizeEdges edges })
+            return;
+
+        var scale = sheetPreviewCanvas.Width /
+            (draft.Orientation == "Portrait"
+                ? LabelPrintLayout.GetPaperDimensionsCm(draft.PaperFormat).WidthCm
+                : LabelPrintLayout.GetPaperDimensionsCm(draft.PaperFormat).HeightCm);
+        var dx = e.HorizontalChange / scale;
+        var dy = e.VerticalChange / scale;
+        var pageWidthCm = sheetPreviewCanvas.Width / scale;
+        var pageHeightCm = sheetPreviewCanvas.Height / scale;
+        if (edges.HasFlag(ResizeEdges.Left))
+        {
+            var adjusted = Math.Clamp(dx, -draft.LogoXcm, draft.LogoWidthCm - 0.3);
+            draft.LogoXcm += adjusted;
+            draft.LogoWidthCm -= adjusted;
+        }
+        if (edges.HasFlag(ResizeEdges.Right))
+            draft.LogoWidthCm = Math.Clamp(draft.LogoWidthCm + dx, 0.3,
+                Math.Max(0.3, pageWidthCm - draft.LogoXcm));
+        if (edges.HasFlag(ResizeEdges.Top))
+        {
+            var adjusted = Math.Clamp(dy, -draft.LogoYcm, draft.LogoHeightCm - 0.3);
+            draft.LogoYcm += adjusted;
+            draft.LogoHeightCm -= adjusted;
+        }
+        if (edges.HasFlag(ResizeEdges.Bottom))
+            draft.LogoHeightCm = Math.Clamp(draft.LogoHeightCm + dy, 0.3,
+                Math.Max(0.3, pageHeightCm - draft.LogoYcm));
+        UpdateCompanyLogoVisual(scale);
+    }
+
+    private void UpdateCompanyLogoVisual(double scale)
+    {
+        if (companyLogoPreview is null || companyLogoSelectionOutline is null)
+            return;
+
+        companyLogoPreview.Width = draft.LogoWidthCm * scale;
+        companyLogoPreview.Height = draft.LogoHeightCm * scale;
+        Canvas.SetLeft(companyLogoPreview, draft.LogoXcm * scale);
+        Canvas.SetTop(companyLogoPreview, draft.LogoYcm * scale);
+        companyLogoSelectionOutline.Width = companyLogoPreview.Width;
+        companyLogoSelectionOutline.Height = companyLogoPreview.Height;
+        Canvas.SetLeft(companyLogoSelectionOutline, draft.LogoXcm * scale);
+        Canvas.SetTop(companyLogoSelectionOutline, draft.LogoYcm * scale);
+
+        var left = draft.LogoXcm * scale;
+        var top = draft.LogoYcm * scale;
+        var right = left + companyLogoPreview.Width;
+        var bottom = top + companyLogoPreview.Height;
+        var centerX = (left + right) / 2;
+        var centerY = (top + bottom) / 2;
+        var positions = new (double X, double Y)[]
+        {
+            (left, top), (centerX, top), (right, top), (right, centerY),
+            (right, bottom), (centerX, bottom), (left, bottom), (left, centerY)
+        };
+        for (var index = 0; index < companyLogoResizeGrips.Count; index++)
+        {
+            Canvas.SetLeft(companyLogoResizeGrips[index], positions[index].X - companyLogoResizeGrips[index].Width / 2);
+            Canvas.SetTop(companyLogoResizeGrips[index], positions[index].Y - companyLogoResizeGrips[index].Height / 2);
+        }
     }
 
     private void PreviewElement_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1403,7 +1787,8 @@ public sealed class FurnitureLayoutWindow : Window
 
     private void ResetLayout()
     {
-        var defaults = new FurniturePrintLayout();
+        var defaults = new LabelPrintLayout();
+        pendingCompanyLogoPath = null;
         draft.CopyFrom(defaults);
         LoadFields();
         RefreshPreview();
@@ -1434,6 +1819,18 @@ public sealed class FurnitureLayoutWindow : Window
             Margin = new Thickness(0, 12, 0, 4)
         });
 
+    private static void ConfigureTextInput(TextBox input, double width)
+    {
+        input.MinHeight = 0;
+        input.Height = 34;
+        input.Width = width;
+        input.HorizontalAlignment = HorizontalAlignment.Left;
+        input.Padding = new Thickness(7, 1, 4, 1);
+        input.TextWrapping = TextWrapping.NoWrap;
+        input.AcceptsReturn = false;
+        input.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
+    }
+
     private void AddNumericField(
         Grid grid,
         string label,
@@ -1443,55 +1840,99 @@ public sealed class FurnitureLayoutWindow : Window
         int row)
     {
         var panel = new StackPanel { Margin = new Thickness(2, 1, 2, 3) };
-        panel.Children.Add(new TextBlock { Text = label, Foreground = new SolidColorBrush(Color.FromRgb(67, 87, 106)) });
+        var labelHeader = new TextBlock
+        {
+            Text = label,
+            Foreground = new SolidColorBrush(Color.FromRgb(67, 87, 106)),
+            Cursor = Cursors.SizeWE,
+            ToolTip = "Gedrückt horizontal ziehen, um den Wert zu ändern",
+            Tag = input
+        };
+        labelHeader.PreviewMouseLeftButtonDown += NumericField_PreviewMouseLeftButtonDown;
+        labelHeader.PreviewMouseMove += NumericField_PreviewMouseMove;
+        labelHeader.PreviewMouseLeftButtonUp += NumericField_PreviewMouseLeftButtonUp;
+        labelHeader.LostMouseCapture += NumericField_LostMouseCapture;
+        panel.Children.Add(labelHeader);
         input.Tag = step;
         input.MinWidth = 0;
-        input.Cursor = Cursors.SizeWE;
-        input.ToolTip = "Zahl eingeben, die Pfeile verwenden oder gedrückt horizontal ziehen";
-        input.PreviewMouseLeftButtonDown += NumericField_PreviewMouseLeftButtonDown;
-        input.PreviewMouseMove += NumericField_PreviewMouseMove;
-        input.PreviewMouseLeftButtonUp += NumericField_PreviewMouseLeftButtonUp;
-        input.LostMouseCapture += NumericField_LostMouseCapture;
+        input.Cursor = Cursors.IBeam;
+        input.ToolTip = "Zahl eingeben oder die Pfeile verwenden";
 
-        input.Padding = new Thickness(7, 1, 3, 1);
+        input.Padding = new Thickness(7, 1, 24, 1);
         input.MinHeight = 0;
-        input.Height = 30;
+        input.Height = 28;
+        input.BorderThickness = new Thickness(0);
+        input.Background = Brushes.Transparent;
+        input.Template = new ControlTemplate(typeof(TextBox))
+        {
+            VisualTree = new FrameworkElementFactory(typeof(ScrollViewer), "PART_ContentHost")
+        };
         var inputGrid = new Grid { Width = 88, Height = 30, HorizontalAlignment = HorizontalAlignment.Left };
-        inputGrid.ColumnDefinitions.Add(new ColumnDefinition());
-        inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
-        inputGrid.RowDefinitions.Add(new RowDefinition());
-        inputGrid.RowDefinitions.Add(new RowDefinition());
-        Grid.SetRowSpan(input, 2);
+        var fieldBorder = new Border
+        {
+            Width = 88,
+            Background = Brushes.White,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(200, 213, 225)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Child = inputGrid
+        };
+        void UpdateFieldOutline(bool hovered)
+        {
+            var focused = input.IsKeyboardFocusWithin;
+            fieldBorder.BorderBrush = new SolidColorBrush(Color.FromRgb(
+                focused ? (byte)36 : hovered ? (byte)126 : (byte)200,
+                focused ? (byte)74 : hovered ? (byte)167 : (byte)213,
+                focused ? (byte)115 : hovered ? (byte)208 : (byte)225));
+            fieldBorder.BorderThickness = new Thickness(focused ? 2 : 1);
+        }
+        fieldBorder.MouseEnter += (_, _) => UpdateFieldOutline(hovered: true);
+        fieldBorder.MouseLeave += (_, _) => UpdateFieldOutline(hovered: false);
+        input.GotKeyboardFocus += (_, _) => UpdateFieldOutline(hovered: fieldBorder.IsMouseOver);
+        input.LostKeyboardFocus += (_, _) => UpdateFieldOutline(hovered: fieldBorder.IsMouseOver);
         inputGrid.Children.Add(input);
 
-        var increase = CreateStepperButton("▲", () => AdjustNumericField(input, step));
-        Grid.SetColumn(increase, 1);
-        Grid.SetRow(increase, 0);
-        inputGrid.Children.Add(increase);
+        var stepper = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            Width = 18,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 2, 0)
+        };
+        stepper.Children.Add(CreateStepperButton("▲", "Wert erhöhen", () => AdjustNumericField(input, step)));
+        stepper.Children.Add(CreateStepperButton("▼", "Wert verringern", () => AdjustNumericField(input, -step)));
+        inputGrid.Children.Add(stepper);
 
-        var decrease = CreateStepperButton("▼", () => AdjustNumericField(input, -step));
-        Grid.SetColumn(decrease, 1);
-        Grid.SetRow(decrease, 1);
-        inputGrid.Children.Add(decrease);
-
-        panel.Children.Add(inputGrid);
+        panel.Children.Add(fieldBorder);
         Grid.SetColumn(panel, column);
         Grid.SetRow(panel, row);
         grid.Children.Add(panel);
     }
 
-    private static Button CreateStepperButton(string glyph, Action action)
+    private static Button CreateStepperButton(string glyph, string accessibleName, Action action)
     {
         var button = new Button
         {
             Content = glyph,
             Padding = new Thickness(0),
-            Margin = new Thickness(1, 0, 0, 0),
+            Margin = new Thickness(0),
             MinHeight = 0,
-            Height = 14,
+            Height = 13,
+            Width = 16,
             FontSize = 7,
-            FontWeight = FontWeights.Bold
+            FontWeight = FontWeights.Bold,
+            Foreground = new SolidColorBrush(Color.FromRgb(82, 127, 169)),
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Focusable = false,
+            ToolTip = accessibleName
         };
+        AutomationProperties.SetName(button, accessibleName);
         button.Click += (_, _) => action();
         return button;
     }

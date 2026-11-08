@@ -1,4 +1,4 @@
-namespace FuniturenEditor.Desktop;
+namespace LabelEditor.Desktop;
 
 using System.Windows.Controls;
 using System.Windows.Media;

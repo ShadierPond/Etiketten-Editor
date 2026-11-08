@@ -1,8 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
-$projectPath = Join-Path $PSScriptRoot 'FuniturenEditor.Desktop.csproj'
+$projectPath = Join-Path $PSScriptRoot 'EtikettenEditor.csproj'
 $publishScript = Join-Path $PSScriptRoot 'publish-windows.ps1'
-$installerScript = Join-Path $PSScriptRoot 'installer\FuniturenEditor.iss'
+$installerScript = Join-Path $PSScriptRoot 'installer\EtikettenEditor.iss'
 $publishPath = Join-Path $PSScriptRoot 'publish\win-x64'
 $outputPath = Join-Path $PSScriptRoot 'installer-output'
 $certificateSubject = 'CN=Tariq Alsalem'
@@ -33,7 +33,7 @@ if ($LASTEXITCODE -ne 0) {
   throw "Installer compilation failed with exit code $LASTEXITCODE."
 }
 
-$installerPath = Join-Path $outputPath "FuniturenEditor-Setup-$version.exe"
+$installerPath = Join-Path $outputPath "EtikettenEditor-Setup-$version.exe"
 if (-not (Test-Path -LiteralPath $installerPath)) {
   throw "The installer was not created at $installerPath."
 }

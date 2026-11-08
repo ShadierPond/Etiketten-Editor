@@ -6,7 +6,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 
-namespace FuniturenEditor.Desktop;
+namespace LabelEditor.Desktop;
 
 internal static class PrintPreviewViewerConfiguration
 {

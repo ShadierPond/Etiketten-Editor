@@ -2,7 +2,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Windows.Media.Imaging;
 
-namespace FuniturenEditor.Desktop;
+namespace LabelEditor.Desktop;
 
 public sealed class PhotoLibrary
 {
@@ -39,8 +39,30 @@ public sealed class PhotoLibrary
         var skippedPhotoCount = 0;
         skippedPhotos = 0;
         var existingPhotos = data.Library.ToList();
+        data.PhotoNames ??= [];
+        data.PhotoAddedAt ??= [];
+        var existingPhotoNames = data.PhotoNames;
+        var existingPhotoAddedAt = data.PhotoAddedAt;
         var keyMap = new Dictionary<string, string>(StringComparer.Ordinal);
         data.Library.Clear();
+        data.PhotoNames = [];
+        data.PhotoAddedAt = [];
+
+        void SetPhotoMetadata(string key, string? name, DateTimeOffset? addedAt = null)
+        {
+            if (!data.PhotoNames.ContainsKey(key))
+            {
+                data.PhotoNames[key] = string.IsNullOrWhiteSpace(name) ? key : Path.GetFileName(name);
+                changed = true;
+            }
+
+            if (!data.PhotoAddedAt.ContainsKey(key))
+            {
+                var path = Path.Combine(directory, FindPhotoFile(key));
+                data.PhotoAddedAt[key] = addedAt ?? new DateTimeOffset(File.GetCreationTimeUtc(path));
+                changed = true;
+            }
+        }
 
         void NormalizePhotoReference(string? value, Action<string> assign)
         {
@@ -59,6 +81,7 @@ public sealed class PhotoLibrary
                 var newKey = ImportPhotoValue(value, sourceDirectory);
                 assign(newKey);
                 data.Library[newKey] = FindPhotoFile(newKey);
+                SetPhotoMetadata(newKey, GetPhotoName(value, newKey));
                 changed = true;
             }
             catch (UnsupportedPhotoFormatException) when (skipUnsupportedPhotos)
@@ -80,6 +103,10 @@ public sealed class PhotoLibrary
                 var newKey = ImportPhotoValue(value, sourceDirectory);
                 keyMap[oldKey] = newKey;
                 data.Library[newKey] = FindPhotoFile(newKey);
+                existingPhotoNames.TryGetValue(oldKey, out var photoName);
+                existingPhotoAddedAt.TryGetValue(oldKey, out var addedAt);
+                SetPhotoMetadata(newKey, photoName ?? GetPhotoName(value, newKey),
+                    existingPhotoAddedAt.ContainsKey(oldKey) ? addedAt : null);
                 changed |= !string.Equals(oldKey, newKey, StringComparison.Ordinal) ||
                            !string.Equals(value, data.Library[newKey], StringComparison.Ordinal);
             }
@@ -106,6 +133,10 @@ public sealed class PhotoLibrary
                     NormalizePhotoReference(photoValue, normalized => item.FieldValues[field.Id] = normalized);
             }
         }
+        foreach (var definition in data.Catalogs)
+            NormalizePhotoReference(definition.Layout.LogoPhotoKey, normalized => definition.Layout.LogoPhotoKey = normalized);
+        NormalizePhotoReference(data.LabelLayout.LogoPhotoKey,
+            normalized => data.LabelLayout.LogoPhotoKey = normalized);
 
         skippedPhotos = skippedPhotoCount;
         return changed;
@@ -115,6 +146,12 @@ public sealed class PhotoLibrary
     {
         var key = ImportPhotoValue(sourcePath, null);
         data.Library[key] = FindPhotoFile(key);
+        data.PhotoNames ??= [];
+        data.PhotoAddedAt ??= [];
+        if (!data.PhotoNames.ContainsKey(key))
+            data.PhotoNames[key] = Path.GetFileName(sourcePath);
+        if (!data.PhotoAddedAt.ContainsKey(key))
+            data.PhotoAddedAt[key] = DateTimeOffset.UtcNow;
         return key;
     }
 
@@ -142,7 +179,14 @@ public sealed class PhotoLibrary
                          .ToList())
                 item.FieldValues[fieldId] = "";
         }
+        foreach (var layout in data.Catalogs.Select(catalog => catalog.Layout).Append(data.LabelLayout))
+        {
+            if (string.Equals(layout.LogoPhotoKey, key, StringComparison.Ordinal))
+                layout.LogoPhotoKey = "";
+        }
         data.Library.Remove(key);
+        data.PhotoNames.Remove(key);
+        data.PhotoAddedAt.Remove(key);
         return references.Count;
     }
 
@@ -200,9 +244,13 @@ public sealed class PhotoLibrary
                 var header when header.StartsWith("data:image/gif", StringComparison.Ordinal) => ".gif",
                 var header when header.StartsWith("data:image/bmp", StringComparison.Ordinal) => ".bmp",
                 var header when header.StartsWith("data:image/tiff", StringComparison.Ordinal) => ".tiff",
+                var header when header.StartsWith("data:image/svg+xml", StringComparison.Ordinal) => ".svg",
                 _ => throw new UnsupportedPhotoFormatException("Das Bildformat wird nicht unterstützt.")
             };
-            return SavePhoto(Convert.FromBase64String(value[(comma + 1)..]), extension);
+            var bytes = Convert.FromBase64String(value[(comma + 1)..]);
+            return extension == ".svg"
+                ? SavePhoto(SvgImageConverter.ConvertToPng(bytes), ".png")
+                : SavePhoto(bytes, extension);
         }
 
         var sourcePath = Path.IsPathRooted(value)
@@ -211,9 +259,12 @@ public sealed class PhotoLibrary
         if (!File.Exists(sourcePath))
             throw new FileNotFoundException($"Das Foto „{value}“ wurde nicht gefunden.");
         var fileExtension = Path.GetExtension(sourcePath).ToLowerInvariant();
-        if (fileExtension is not (".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" or ".tif" or ".tiff"))
+        if (fileExtension is not (".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" or ".tif" or ".tiff" or ".svg"))
             throw new UnsupportedPhotoFormatException($"Das Fotoformat „{fileExtension}“ wird nicht unterstützt.");
-        return SavePhoto(File.ReadAllBytes(sourcePath), fileExtension);
+        var sourceBytes = File.ReadAllBytes(sourcePath);
+        return fileExtension == ".svg"
+            ? SavePhoto(SvgImageConverter.ConvertToPng(sourceBytes), ".png")
+            : SavePhoto(sourceBytes, fileExtension);
     }
 
     private string SavePhoto(byte[] bytes, string extension)
@@ -239,6 +290,14 @@ public sealed class PhotoLibrary
     {
         var file = Directory.EnumerateFiles(directory, key + ".*").FirstOrDefault();
         return file is null ? throw new FileNotFoundException($"Das Foto „{key}“ fehlt in der lokalen Mediathek.") : Path.GetFileName(file);
+    }
+
+    private static string GetPhotoName(string value, string key)
+    {
+        if (value.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            return key;
+        var name = Path.GetFileName(value);
+        return string.IsNullOrWhiteSpace(name) ? key : name;
     }
 }
 

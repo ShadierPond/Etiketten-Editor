@@ -6,7 +6,7 @@ let data={pages:[emptyPage('Kategorie 1')],library:{},employeePages:[emptyEmploy
 let currentPage=0;
 let currentItem=null;
 let dragSourceIndex=null;
-let editorMode='furniture';
+let editorMode='labels';
 let currentEmployee=null;
 let highlightTimer=null;
 let searchHighlightIndex=null;
@@ -137,7 +137,7 @@ function exportJson(){
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download='furnituren-daten.json';
+  a.download='etiketten-daten.json';
   a.click();
   URL.revokeObjectURL(a.href);
 }
@@ -291,7 +291,7 @@ function cell(item,i){
   const photoUrl=resolvePhoto(item.photo);
   const photo=photoUrl
     ? `<img src="${photoUrl}" alt="Foto" style="display:block"><div class="ph" style="display:none">Foto</div>`
-    : `<img src="" alt="Foto"><div class="ph">Foto</div>`;
+    : `<div class="ph">Foto</div>`;
 
   const qrSource=item.quickService?quickServiceQrContent(item):item.ref;
   const qrHtml=qrSource
@@ -397,7 +397,7 @@ function buildAllPagesPrintHtml(){
   return data.pages.map((p,idx)=>`
     <div class="page print-page">
       <div class="page-heading">
-        <span>Furnituren Editor</span>
+        <span>Etiketten Editor</span>
         <strong>${esc(p.name)}</strong>
         <span>A4 · 15 Etiketten</span>
       </div>
@@ -410,7 +410,7 @@ function buildAllEmployeePagesPrintHtml(){
   const rows=Math.max(1,Math.floor(260/(layout.height+3)));
   const printClass=`employee-sheet qr-${layout.qrPosition}${layout.nameBold?' employee-name-bold':''}`;
   const printStyle=`--employee-card-width:${layout.width}mm;--employee-card-height:${layout.height}mm;--employee-card-rows:${rows};--employee-name-size:${layout.nameSize}pt;--employee-number-size:${layout.numberSize}pt`;
-  return employeePages().map(page=>`<section class="print-employee-page"><div class="page-heading"><span>Furnituren Editor</span><strong>Mitarbeitendencodes · ${esc(page.name)}</strong><span>A4 · ${page.employees.length} Mitarbeiter</span></div><div class="${printClass}" style="${printStyle}">${employeeCardsHtml(page.employees)}</div></section>`).join('');
+  return employeePages().map(page=>`<section class="print-employee-page"><div class="page-heading"><span>Etiketten Editor</span><strong>Mitarbeitendencodes · ${esc(page.name)}</strong><span>A4 · ${page.employees.length} Mitarbeiter</span></div><div class="${printClass}" style="${printStyle}">${employeeCardsHtml(page.employees)}</div></section>`).join('');
 }
 function printCurrentPage(){
   setPrintOrientation(editorMode==='employee');
@@ -450,7 +450,7 @@ function render(){
   updateWorkspaceContext();
 }
 
-function setEditorMode(mode){searchHighlightIndex=null;editorMode=mode;const employeeMode=mode==='employee';const availablePages=employeeMode?employeePages():data.pages;if(currentPage>=availablePages.length)currentPage=0;const employeeSheet=document.getElementById('employeeSheet');document.getElementById('furnitureTab').classList.toggle('active',!employeeMode);document.getElementById('employeeTab').classList.toggle('active',employeeMode);document.getElementById('furnitureTab').setAttribute('aria-selected',String(!employeeMode));document.getElementById('employeeTab').setAttribute('aria-selected',String(employeeMode));document.getElementById('employeeControls').hidden=!employeeMode;sheet.hidden=employeeMode;sheet.style.display=employeeMode?'none':'table';employeeSheet.hidden=!employeeMode;employeeSheet.style.display=employeeMode?'grid':'none';const layout=employeeLayout();document.getElementById('employeeCardWidth').value=layout.width;document.getElementById('employeeCardHeight').value=layout.height;document.getElementById('employeeQrPosition').value=layout.qrPosition;document.getElementById('employeeNameSize').value=layout.nameSize;document.getElementById('employeeNumberSize').value=layout.numberSize;document.getElementById('employeeNameBold').checked=layout.nameBold;document.getElementById('pageSelectLabel').textContent=employeeMode?'Aktive Filiale':'Aktive Kategorie';document.getElementById('addPageButton').textContent=employeeMode?'Neue Filiale':'Neue Kategorie';document.getElementById('printCurrentButton').textContent=employeeMode?'Aktuelle Filiale drucken':'Aktuelle Kategorie drucken';document.getElementById('printAllButton').textContent=employeeMode?'Alle Filialen drucken':'Alle Kategorien drucken';updateSearchCopy();document.body.classList.toggle('employee-mode',employeeMode);setPrintOrientation(employeeMode);refreshPages();document.getElementById('workspaceMeta').innerHTML=employeeMode?`<span><strong>${activeEmployees().length}</strong> Mitarbeitendencodes in dieser Filiale</span><span class="meta-divider"></span><span>QR-Code für die Kassenanmeldung</span>`:`<span><strong id="completedCount">0</strong> von 15 Artikeln gepflegt</span><span class="meta-divider"></span><span>35 × 35 mm Etikettenformat</span>`;render();}
+function setEditorMode(mode){searchHighlightIndex=null;editorMode=mode;const employeeMode=mode==='employee';const availablePages=employeeMode?employeePages():data.pages;if(currentPage>=availablePages.length)currentPage=0;const employeeSheet=document.getElementById('employeeSheet');document.getElementById('labelsTab').classList.toggle('active',!employeeMode);document.getElementById('employeeTab').classList.toggle('active',employeeMode);document.getElementById('labelsTab').setAttribute('aria-selected',String(!employeeMode));document.getElementById('employeeTab').setAttribute('aria-selected',String(employeeMode));document.getElementById('employeeControls').hidden=!employeeMode;sheet.hidden=employeeMode;sheet.style.display=employeeMode?'none':'table';employeeSheet.hidden=!employeeMode;employeeSheet.style.display=employeeMode?'grid':'none';const layout=employeeLayout();document.getElementById('employeeCardWidth').value=layout.width;document.getElementById('employeeCardHeight').value=layout.height;document.getElementById('employeeQrPosition').value=layout.qrPosition;document.getElementById('employeeNameSize').value=layout.nameSize;document.getElementById('employeeNumberSize').value=layout.numberSize;document.getElementById('employeeNameBold').checked=layout.nameBold;document.getElementById('pageSelectLabel').textContent=employeeMode?'Aktive Filiale':'Aktive Kategorie';document.getElementById('addPageButton').textContent=employeeMode?'Neue Filiale':'Neue Kategorie';document.getElementById('printCurrentButton').textContent=employeeMode?'Aktuelle Filiale drucken':'Aktuelle Kategorie drucken';document.getElementById('printAllButton').textContent=employeeMode?'Alle Filialen drucken':'Alle Kategorien drucken';updateSearchCopy();document.body.classList.toggle('employee-mode',employeeMode);setPrintOrientation(employeeMode);refreshPages();document.getElementById('workspaceMeta').innerHTML=employeeMode?`<span><strong>${activeEmployees().length}</strong> Mitarbeitendencodes in dieser Filiale</span><span class="meta-divider"></span><span>QR-Code für die Kassenanmeldung</span>`:`<span><strong id="completedCount">0</strong> von 15 Artikeln gepflegt</span><span class="meta-divider"></span><span>35 × 35 mm Etikettenformat</span>`;render();}
 function setPrintOrientation(employeeMode){document.body.classList.toggle('employee-mode',employeeMode);}
 function saveEmployeeLayout(){data.employeeLayout={width:Math.max(35,Number(document.getElementById('employeeCardWidth').value)||70),height:Math.max(12,Number(document.getElementById('employeeCardHeight').value)||17.5),qrPosition:document.getElementById('employeeQrPosition').value,nameSize:Math.max(5,Number(document.getElementById('employeeNameSize').value)||8),numberSize:Math.max(4,Number(document.getElementById('employeeNumberSize').value)||5.5),nameBold:document.getElementById('employeeNameBold').checked};renderEmployees();}
 function renderEmployees(){const target=document.getElementById('employeeSheet');const layout=employeeLayout();const rows=Math.max(1,Math.floor(260/(layout.height+3)));target.style.setProperty('--employee-card-width',layout.width+'mm');target.style.setProperty('--employee-card-height',layout.height+'mm');target.style.setProperty('--employee-card-rows',rows);target.style.setProperty('--employee-name-size',layout.nameSize+'pt');target.style.setProperty('--employee-number-size',layout.numberSize+'pt');target.className='employee-sheet qr-'+layout.qrPosition+(layout.nameBold?' employee-name-bold':'');const list=activeEmployees();target.innerHTML=list.length?employeeCardsHtml(list):'<div class="employee-empty"><strong>Noch keine Mitarbeitendencodes</strong><span>Fügen Sie links den ersten Mitarbeiter hinzu.</span></div>';}
@@ -473,7 +473,7 @@ function toggleTheme(){const next=document.documentElement.dataset.theme==='dark
 function initializeTheme(){const saved=savedTheme();applyTheme(saved==='dark'||saved==='light'?saved:systemTheme());const media=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)');if(media){const update=event=>{if(!savedTheme())applyTheme(event.matches?'dark':'light');};if(media.addEventListener)media.addEventListener('change',update);else if(media.addListener)media.addListener(update);}document.getElementById('themeToggle').addEventListener('click',toggleTheme);}
 
 function searchText(value){return String(value||'').toLocaleLowerCase('de-DE');}
-function updateSearchCopy(){const employees=editorMode==='employee';const input=document.getElementById('globalSearch');document.getElementById('searchLabel').textContent=employees?'Mitarbeiter suchen':'Furnituren suchen';input.placeholder=employees?'Filiale, Name, Mitarbeiternummer':'Kategorie, Beco, Beschreibung, Referenz';runSearch();}
+function updateSearchCopy(){const employees=editorMode==='employee';const input=document.getElementById('globalSearch');document.getElementById('searchLabel').textContent=employees?'Mitarbeiter suchen':'Etiketten suchen';input.placeholder=employees?'Filiale, Name, Mitarbeiternummer':'Kategorie, Beco, Beschreibung, Referenz';runSearch();}
 function runSearch(){
   const query=searchText(document.getElementById('globalSearch').value.trim());
   const results=document.getElementById('searchResults');

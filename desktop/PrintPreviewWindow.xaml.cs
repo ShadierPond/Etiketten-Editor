@@ -5,7 +5,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 
-namespace FuniturenEditor.Desktop;
+namespace LabelEditor.Desktop;
 
 public partial class PrintPreviewWindow : Window
 {
@@ -67,8 +67,7 @@ public partial class PrintPreviewWindow : Window
             return IntPtr.Zero;
 
         var delta = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
-        previewScrollViewer.ScrollToHorizontalOffset(
-            previewScrollViewer.HorizontalOffset + delta * 0.5);
+        ScrollViewerWheelBehavior.ScrollBy(previewScrollViewer, horizontal: true, delta * 0.5);
         handled = true;
         return IntPtr.Zero;
     }

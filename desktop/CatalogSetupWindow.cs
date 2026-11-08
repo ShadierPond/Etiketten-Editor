@@ -3,7 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 
-namespace FuniturenEditor.Desktop;
+namespace LabelEditor.Desktop;
 
 public sealed class CatalogSetupWindow : Window
 {
@@ -47,7 +47,7 @@ public sealed class CatalogSetupWindow : Window
     private readonly Button configureLayoutButton = new() { Content = "Vorlage einrichten" };
     private readonly TextBlock layoutStatus = new();
     private readonly List<SetupField> fields = [];
-    private readonly FurniturePrintLayout layout;
+    private readonly LabelPrintLayout layout;
     private bool layoutConfigured;
     private int currentStep;
 
@@ -200,6 +200,7 @@ public sealed class CatalogSetupWindow : Window
 
     private void BuildFieldsGrid()
     {
+        VirtualizingPanel.SetScrollUnit(fieldsGrid, ScrollUnit.Pixel);
         fieldsGrid.Columns.Add(new DataGridTextColumn
         {
             Header = "Feldname",
@@ -329,7 +330,7 @@ public sealed class CatalogSetupWindow : Window
         {
             Catalogs = [new EditorCatalog { Name = catalogNameBox.Text.Trim(), Lists = [page], Layout = layout }]
         };
-        var editor = new FurnitureLayoutWindow(draftCatalog, page.Items[0], photoLibrary, layout)
+        var editor = new LabelLayoutWindow(draftCatalog, page.Items[0], photoLibrary, layout)
         {
             Owner = this
         };
@@ -395,13 +396,13 @@ public sealed class CatalogSetupWindow : Window
         validationMessage.Visibility = Visibility.Visible;
     }
 
-    private static FurniturePrintLayout CreateDefaultLayout()
+    private static LabelPrintLayout CreateDefaultLayout()
     {
         var name = CreateField("Name", "Text", 0.15, 0.15, width: 3.2, height: 0.55, bold: true);
         var articleNumber = CreateField("Artikelnummer", "Text", 0.15, 0.8, width: 3.2, height: 0.35);
         var price = CreateField("Preis", "Number", 0.15, 2.85, width: 1.5, height: 0.4, suffix: " €", bold: true);
         var photo = CreateField("Foto", "Photo", 2.5, 1.2, width: 0.8, height: 0.8);
-        var result = new FurniturePrintLayout
+        var result = new LabelPrintLayout
         {
             Fields = [name, articleNumber, price, photo]
         };

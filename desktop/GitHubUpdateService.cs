@@ -9,7 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace FuniturenEditor.Desktop;
+namespace LabelEditor.Desktop;
 
 internal sealed class GitHubUpdateService
 {
@@ -105,9 +105,11 @@ internal sealed class GitHubUpdateService
             throw new InvalidDataException("Das GitHub-Release enthält keine Version oder Release-Seite.");
 
         var asset = release.Assets.FirstOrDefault(candidate =>
-            string.Equals(candidate.Name, "FuniturenEditor-win-x64.zip", StringComparison.OrdinalIgnoreCase));
+            string.Equals(candidate.Name, "EtikettenEditor-win-x64.zip", StringComparison.OrdinalIgnoreCase))
+            ?? release.Assets.FirstOrDefault(candidate =>
+                string.Equals(candidate.Name, "FuniturenEditor-win-x64.zip", StringComparison.OrdinalIgnoreCase));
         if (asset is null)
-            throw new InvalidDataException("Das neueste Release enthält nicht das Paket FuniturenEditor-win-x64.zip.");
+            throw new InvalidDataException("Das neueste Release enthält kein gültiges Updatepaket.");
 
         return new UpdateRelease(release.TagName, release.Name, release.HtmlUrl, asset.ApiUrl, asset.Digest);
     }
@@ -143,9 +145,10 @@ internal sealed class GitHubUpdateService
             }
 
             using var archive = ZipFile.OpenRead(archivePath);
-            var executable = archive.GetEntry("FuniturenEditor.Desktop.exe");
+            var executable = archive.GetEntry("EtikettenEditor.exe")
+                ?? archive.GetEntry("FuniturenEditor.Desktop.exe");
             if (executable is null || executable.Length == 0)
-                throw new InvalidDataException("Das Update-Paket enthält keine gültige FuniturenEditor.Desktop.exe.");
+                throw new InvalidDataException("Das Update-Paket enthält keine gültige Desktop-Anwendung.");
 
             ValidateArchivePaths(archive, updateDirectory);
             return archivePath;
@@ -170,7 +173,7 @@ internal sealed class GitHubUpdateService
             $installDirectory = '{{EscapePowerShell(installDirectory)}}'
             $executablePath = '{{EscapePowerShell(executablePath)}}'
             $processId = {{processId}}
-            $workDirectory = Join-Path $env:TEMP ('FuniturenEditorUpdate-' + [guid]::NewGuid().ToString('N'))
+            $workDirectory = Join-Path $env:TEMP ('EtikettenEditorUpdate-' + [guid]::NewGuid().ToString('N'))
             $logDirectory = Join-Path $env:LOCALAPPDATA 'ShadierPond\FuniturenEditor\Updates'
             $logPath = Join-Path $logDirectory 'install.log'
             try {
@@ -184,11 +187,16 @@ internal sealed class GitHubUpdateService
                 }
                 New-Item -ItemType Directory -Path $workDirectory -Force | Out-Null
                 Expand-Archive -LiteralPath $archivePath -DestinationPath $workDirectory -Force
-                if (-not (Test-Path -LiteralPath (Join-Path $workDirectory 'FuniturenEditor.Desktop.exe'))) {
+                $updatedExecutable = Join-Path $workDirectory 'EtikettenEditor.exe'
+                if (-not (Test-Path -LiteralPath $updatedExecutable)) {
+                    $updatedExecutable = Join-Path $workDirectory 'FuniturenEditor.Desktop.exe'
+                }
+                if (-not (Test-Path -LiteralPath $updatedExecutable)) {
                     throw 'Das Update-Paket enthält keine Programmdatei.'
                 }
                 Copy-Item -Path (Join-Path $workDirectory '*') -Destination $installDirectory -Recurse -Force
-                Start-Process -FilePath $executablePath
+                Remove-Item -LiteralPath (Join-Path $installDirectory 'FuniturenEditor.Desktop.exe') -Force -ErrorAction SilentlyContinue
+                Start-Process -FilePath (Join-Path $installDirectory (Split-Path -Leaf $updatedExecutable))
                 Remove-Item -LiteralPath $archivePath -Force
                 Remove-Item -LiteralPath $workDirectory -Recurse -Force
                 Add-Content -LiteralPath $logPath -Value "$(Get-Date -Format o) Update installed successfully."
@@ -199,7 +207,7 @@ internal sealed class GitHubUpdateService
                 Add-Type -AssemblyName PresentationFramework
                 [System.Windows.MessageBox]::Show(
                     "Das Update konnte nicht installiert werden.`n`n$($_.Exception.Message)`n`nDetails: $logPath",
-                    'Funituren Editor - Update',
+                    'Etiketten Editor - Update',
                     'OK',
                     'Error'
                 ) | Out-Null
@@ -289,7 +297,7 @@ internal sealed class GitHubUpdateService
     private static HttpClient CreateHttpClient()
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("FuniturenEditor-Updater/1.0");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("EtikettenEditor-Updater/1.0");
         return client;
     }
 

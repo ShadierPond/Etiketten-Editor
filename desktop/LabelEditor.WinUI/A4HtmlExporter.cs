@@ -1,8 +1,8 @@
 using System.Text;
-using FuniturenEditor.Desktop;
+using LabelEditor.Desktop;
 using QRCoder;
 
-namespace FuniturenEditor_WinUI;
+namespace LabelEditor.WinUI;
 
 /// <summary>
 /// Creates A4 layouts with explicit physical dimensions for the in-app preview
@@ -10,18 +10,18 @@ namespace FuniturenEditor_WinUI;
 /// </summary>
 internal static class A4HtmlExporter
 {
-    public static string CreateFurnitureHtml(CatalogData catalog, CatalogPage page, StoragePhotoLibrary photos)
-        => CreateFurnitureHtml(catalog, [page], photos);
+    public static string CreateLabelHtml(CatalogData catalog, CatalogPage page, StoragePhotoLibrary photos)
+        => CreateLabelHtml(catalog, [page], photos);
 
-    public static string CreateFurnitureHtml(
+    public static string CreateLabelHtml(
         CatalogData catalog,
         IEnumerable<CatalogPage> pages,
         StoragePhotoLibrary photos)
     {
-        var layout = catalog.FurniturePrintLayout;
+        var layout = catalog.LabelLayout;
         layout.Normalize();
         var catalogPages = pages.ToList();
-        var html = new StringBuilder(StartHtml("Furnituren-Etiketten", "landscape"));
+        var html = new StringBuilder(StartHtml("Etiketten", "landscape"));
         var width = layout.CellWidthCm;
         var height = layout.CellHeightCm;
         var left = (29.7 - width * 5) / 2;
@@ -32,7 +32,9 @@ internal static class A4HtmlExporter
             html.Append("<section class=\"catalog-sheet\"");
             if (pageIndex < catalogPages.Count - 1)
                 html.Append(" style=\"break-after:page;page-break-after:always\"");
-            html.Append("><header><strong>Furnituren Editor</strong><span>")
+            html.Append('>');
+            AppendCompanyLogo(html, photos.GetPhotoPath(catalog, layout.LogoPhotoKey), layout);
+            html.Append("<header><strong>Etiketten Editor</strong><span>")
                 .Append(Encode(page.Name))
                 .Append("</span><small>A4 · 15 Etiketten · 5 × 3</small></header><main class=\"labels\">");
             for (var index = 0; index < 15; index++)
@@ -80,7 +82,7 @@ internal static class A4HtmlExporter
             html.Append("<section");
             if (branchIndex > 0)
                 html.Append(" style=\"break-before:page;page-break-before:always\"");
-            html.Append("><header><strong>Furnituren Editor</strong><span>")
+            html.Append("><header><strong>Etiketten Editor</strong><span>")
                 .Append(Encode(branch.Name))
                 .Append("</span><small>Mitarbeiterkarten</small></header><main class=\"employee-grid\">");
             foreach (var employee in branch.Employees)
@@ -113,17 +115,18 @@ internal static class A4HtmlExporter
         return new PngByteQRCode(qrData).GetGraphic(8);
     }
 
-    public static string GetQrContent(CatalogItem item, FurniturePrintLayout layout)
+    public static string GetQrContent(CatalogItem item, LabelPrintLayout layout)
     {
         if (!layout.QrCode.Enabled)
             return "";
         var value = GetSourceValue(item, layout, layout.QrCode.SourceField);
         if (value.Length == 0 && layout.QrCode.UseFallback)
             value = GetSourceValue(item, layout, layout.QrCode.FallbackField);
-        return value.Length == 0 ? "" : layout.QrCode.Prefix + value + layout.QrCode.Suffix;
+        var codeField = layout.Elements.FirstOrDefault(field => field.Kind is "Qr" or "Barcode") ?? layout.Qr;
+        return value.Length == 0 ? "" : codeField.Prefix + value + codeField.Suffix;
     }
 
-    private static string GetSourceValue(CatalogItem item, FurniturePrintLayout layout, string fieldId)
+    private static string GetSourceValue(CatalogItem item, LabelPrintLayout layout, string fieldId)
     {
         if (item.FieldValues.TryGetValue(fieldId, out var value))
             return value.Trim();
@@ -153,7 +156,7 @@ internal static class A4HtmlExporter
         @page { size:A4 {{orientation}}; margin:0; }
         * { box-sizing:border-box; }
         html,body { margin:0; padding:0; color:#111; font-family:Arial, sans-serif; }
-        .catalog-sheet { width:297mm; height:210mm; overflow:hidden; }
+        .catalog-sheet { position:relative; width:297mm; height:210mm; overflow:hidden; }
         header { height:12mm; padding:5mm 8mm 0; display:flex; justify-content:space-between; align-items:flex-start; font-size:9pt; color:#555; }
         header span { color:#111; font-weight:600; font-size:11pt; }
         header small { font-size:8pt; }
@@ -184,6 +187,30 @@ internal static class A4HtmlExporter
         AppendImage(html, element, $"data:{mime};base64,{Convert.ToBase64String(File.ReadAllBytes(path))}", "Artikelbild");
     }
 
+    private static void AppendCompanyLogo(StringBuilder html, string? path, LabelPrintLayout layout)
+    {
+        if (path is null || !File.Exists(path))
+            return;
+
+        var mime = Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".bmp" => "image/bmp",
+            ".tif" or ".tiff" => "image/tiff",
+            _ => "image/png"
+        };
+        html.Append("<img alt=\"Firmenlogo\" src=\"data:")
+            .Append(mime)
+            .Append(";base64,")
+            .Append(Convert.ToBase64String(File.ReadAllBytes(path)))
+            .Append("\" style=\"position:absolute;left:")
+            .Append(Cm(layout.LogoXcm)).Append("cm;top:")
+            .Append(Cm(layout.LogoYcm)).Append("cm;width:")
+            .Append(Cm(layout.LogoWidthCm)).Append("cm;height:")
+            .Append(Cm(layout.LogoHeightCm)).Append("cm;object-fit:contain;z-index:5\">");
+    }
+
     private static void AppendImage(StringBuilder html, PrintElementLayout element, string source, string alt)
     {
         html.Append("<img class=\"field\" alt=\"").Append(Encode(alt)).Append("\" src=\"")
@@ -195,12 +222,19 @@ internal static class A4HtmlExporter
     {
         if (string.IsNullOrWhiteSpace(value))
             return;
+        value = element.Prefix + value + element.Suffix;
         html.Append("<div class=\"field\" style=\"")
             .Append(PositionStyle(element))
             .Append("font-size:")
             .Append(element.FontSize.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))
             .Append("pt;font-weight:")
             .Append(element.Bold ? "700" : "400")
+            .Append(";font-style:")
+            .Append(element.Italic ? "italic" : "normal")
+            .Append(";text-decoration:")
+            .Append(element.Underline ? "underline" : "none")
+            .Append(";text-align:")
+            .Append(element.TextAlignment.ToLowerInvariant())
             .Append("\">")
             .Append(Encode(value))
             .Append("</div>");

@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Windows;
 
-namespace FuniturenEditor.Desktop;
+namespace LabelEditor.Desktop;
 
 public partial class UpdateWindow : Window
 {

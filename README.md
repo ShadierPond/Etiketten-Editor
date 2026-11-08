@@ -1,7 +1,7 @@
 # Etiketten Editor
 
 Der **Etiketten Editor** ist eine Windows-Anwendung für deutsche
-Einzelhandelsunternehmen. Mit ihr lassen sich Furnituren- und Produktkataloge
+Einzelhandelsunternehmen. Mit ihr lassen sich Etiketten- und Produktkataloge
 pflegen, Etiketten gestalten, Artikelbilder verwalten und Druckbögen für den
 Arbeitsalltag erstellen.
 
@@ -39,8 +39,8 @@ Das Repository enthält zwei Oberflächen:
 Voraussetzung ist das **.NET 10 SDK** unter Windows.
 
 ```powershell
-dotnet build desktop\FuniturenEditor.Desktop.csproj
-dotnet run --project desktop\FuniturenEditor.Desktop.csproj
+dotnet build desktop\EtikettenEditor.csproj
+dotnet run --project desktop\EtikettenEditor.csproj
 ```
 
 Für eine portable x64-Version:
@@ -63,8 +63,8 @@ die Fotomediathek bleiben bei einer Deinstallation erhalten.
 Fertige Installer und Update-Pakete liegen im Bereich
 [Releases](https://github.com/ShadierPond/Etiketten-Editor/releases):
 
-- `FuniturenEditor-Setup-<Version>.exe` ist der Windows-Installer.
-- `FuniturenEditor-win-x64.zip` ist das portable Update-Paket.
+- `EtikettenEditor-Setup-<Version>.exe` ist der Windows-Installer.
+- `EtikettenEditor-win-x64.zip` ist das portable Update-Paket.
 
 Die Desktop-Anwendung kann öffentliche Releases direkt prüfen. Eine GitHub-
 Anmeldung ist dafür nicht erforderlich. Der Update-Download prüft zusätzlich
@@ -72,12 +72,14 @@ die von GitHub bereitgestellte SHA-256-Prüfsumme.
 
 Die Installer werden mit einem Zertifikat von Tariq Alsalem signiert. Das
 öffentliche Zertifikat liegt unter
-`desktop\certificates\FuniturenEditor-Tariq-Alsalem.cer`; der private Schlüssel
+`desktop\certificates\EtikettenEditor-Tariq-Alsalem.cer`; der private Schlüssel
 wird nicht im Repository gespeichert.
 
 ## Daten und Sicherheit
 
-Die Desktop-Anwendung speichert Daten lokal im Benutzerprofil:
+Die Desktop-Anwendung speichert Daten lokal im Benutzerprofil. Die bisherigen
+Ordner- und Datenbanknamen bleiben erhalten, damit bestehende Kataloge und Fotos
+nach der Umbenennung weiterverwendet werden:
 
 - Datenbank: `%LOCALAPPDATA%\ShadierPond\FuniturenEditor\funituren-desktop.db`
 - Fotos: `%LOCALAPPDATA%\ShadierPond\FuniturenEditor\Photos`
@@ -114,7 +116,7 @@ Diese Lizenz ist bewusst keine Open-Source-Lizenz im Sinne der OSI-Kriterien.
 | Pfad | Inhalt |
 | --- | --- |
 | `desktop/` | Primäre WPF-Anwendung, Build- und Installer-Skripte |
-| `desktop/FuniturenEditor.WinUI/` | Separater WinUI-3-Versuch |
+| `desktop/LabelEditor.WinUI/` | Separater WinUI-3-Versuch |
 | `Icons/` | Verwendete SVG-Symbole |
 | `index.html`, `style.css`, `main.js` | Browser-Version |
 

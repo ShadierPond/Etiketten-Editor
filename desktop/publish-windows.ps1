@@ -1,10 +1,10 @@
 $ErrorActionPreference = 'Stop'
 
-$projectPath = Join-Path $PSScriptRoot 'FuniturenEditor.Desktop.csproj'
+$projectPath = Join-Path $PSScriptRoot 'EtikettenEditor.csproj'
 $publishPath = Join-Path $PSScriptRoot 'publish\win-x64'
-$archivePath = Join-Path $PSScriptRoot 'publish\FuniturenEditor-win-x64.zip'
+$archivePath = Join-Path $PSScriptRoot 'publish\EtikettenEditor-win-x64.zip'
 $certificateSubject = 'CN=Tariq Alsalem'
-$publicCertificatePath = Join-Path $PSScriptRoot 'certificates\FuniturenEditor-Tariq-Alsalem.cer'
+$publicCertificatePath = Join-Path $PSScriptRoot 'certificates\EtikettenEditor-Tariq-Alsalem.cer'
 $version = ([string]([xml](Get-Content -LiteralPath $projectPath)).Project.PropertyGroup.Version).Trim()
 if ([string]::IsNullOrWhiteSpace($version)) {
   throw "Could not read the application version from $projectPath."
@@ -38,12 +38,14 @@ if (-not (Test-Path -LiteralPath $publicCertificatePath)) {
   throw "The public publisher certificate was not found at $publicCertificatePath."
 }
 
-$executablePath = Join-Path $publishPath 'FuniturenEditor.Desktop.exe'
+$executablePath = Join-Path $publishPath 'EtikettenEditor.exe'
 $signature = Set-AuthenticodeSignature -FilePath $executablePath -Certificate $certificate -HashAlgorithm SHA256
 if ($null -eq $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint) {
   throw "The published application could not be signed with $certificateSubject."
 }
 Copy-Item -LiteralPath $publicCertificatePath -Destination $publishPath -Force
+Remove-Item -LiteralPath (Join-Path $publishPath 'FuniturenEditor-Tariq-Alsalem.cer') `
+  -Force -ErrorAction SilentlyContinue
 
 Compress-Archive -Path (Join-Path $publishPath '*') -DestinationPath $archivePath -Force
 Write-Host "Publish complete: $publishPath"

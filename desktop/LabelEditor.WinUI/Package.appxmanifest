@@ -17,7 +17,7 @@
   <mp:PhoneIdentity PhoneProductId="25F72D86-4060-4CC3-AB4E-13817EBBE8D3" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
-    <DisplayName>FuniturenEditor.WinUI</DisplayName>
+    <DisplayName>Etiketten Editor</DisplayName>
     <PublisherDisplayName>AppPublisher</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
     <uap10:PackageIntegrity>
@@ -39,8 +39,8 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="FuniturenEditor.WinUI"
-        Description="FuniturenEditor.WinUI"
+        DisplayName="Etiketten Editor"
+        Description="Etiketten Editor"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">

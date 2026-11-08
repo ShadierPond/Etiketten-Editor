@@ -1,5 +1,5 @@
 using System.Text.Json;
-using FuniturenEditor.Desktop;
+using LabelEditor.Desktop;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -10,7 +10,7 @@ using Windows.Storage;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
-namespace FuniturenEditor_WinUI;
+namespace LabelEditor.WinUI;
 
 public sealed partial class MainPage : Page
 {
@@ -41,7 +41,7 @@ public sealed partial class MainPage : Page
         AuthenticationView.Visibility = Visibility.Visible;
         ShellNavigation.Visibility = Visibility.Collapsed;
         var isFirstRun = !_store.HasAccounts;
-        AuthenticationTitle.Text = isFirstRun ? "Willkommen beim Furnituren Editor" : "Furnituren Editor";
+        AuthenticationTitle.Text = isFirstRun ? "Willkommen beim Etiketten Editor" : "Etiketten Editor";
         AuthenticationSubtitle.Text = isFirstRun
             ? "Lege zuerst ein Administratorkonto an. Es wird lokal auf diesem Computer gespeichert."
             : "Melde dich an, um deinen lokalen Katalog zu öffnen.";
@@ -132,7 +132,7 @@ public sealed partial class MainPage : Page
             RefreshCategories();
             RefreshBranches();
             RefreshUsers();
-            ShowSection("furniture");
+            ShowSection("label");
             ShellNavigation.SelectedItem = ShellNavigation.MenuItems[0];
             StatusInfoBar.IsOpen = false;
         }
@@ -158,7 +158,7 @@ public sealed partial class MainPage : Page
 
     private void ShowSection(string section)
     {
-        FurnitureView.Visibility = section == "furniture" ? Visibility.Visible : Visibility.Collapsed;
+        LabelView.Visibility = section == "label" ? Visibility.Visible : Visibility.Collapsed;
         EmployeesView.Visibility = section == "employees" ? Visibility.Visible : Visibility.Collapsed;
         LayoutView.Visibility = section == "layout" ? Visibility.Visible : Visibility.Collapsed;
         UsersView.Visibility = section == "users" && _isAdministrator ? Visibility.Visible : Visibility.Collapsed;
@@ -174,7 +174,7 @@ public sealed partial class MainPage : Page
             _selectedCategory = _catalog.Pages[0];
         CategoryBox.SelectedIndex = _catalog.Pages.IndexOf(_selectedCategory);
         _isRefreshing = false;
-        RefreshFurnitureList();
+        RefreshLabelList();
     }
 
     private void CategoryBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -183,20 +183,20 @@ public sealed partial class MainPage : Page
             return;
         _selectedCategory = _catalog.Pages[CategoryBox.SelectedIndex];
         _selectedItem = null;
-        RefreshFurnitureList();
-        ClearFurnitureEditor();
+        RefreshLabelList();
+        ClearLabelEditor();
     }
 
-    private void RefreshFurnitureList(int selectedIndex = -1)
+    private void RefreshLabelList(int selectedIndex = -1)
     {
         if (_selectedCategory is null)
             return;
 
         var search = SearchBox.Text.Trim();
         _isRefreshing = true;
-        FurnitureList.ItemsSource = CreateFurnitureRows();
-        FurnitureList.SelectedIndex = selectedIndex;
-        FurnitureSubtitle.Text = $"{_catalog.Pages.Count} Kategorien · 15 Positionen · {_selectedCategory.Name}";
+        LabelList.ItemsSource = CreateLabelRows();
+        LabelList.SelectedIndex = selectedIndex;
+        LabelSubtitle.Text = $"{_catalog.Pages.Count} Kategorien · 15 Positionen · {_selectedCategory.Name}";
         _isRefreshing = false;
         if (!string.IsNullOrWhiteSpace(search))
             UpdateSearchSuggestions(search);
@@ -210,18 +210,18 @@ public sealed partial class MainPage : Page
         return title;
     }
 
-    private void FurnitureList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void LabelList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_isRefreshing || _selectedCategory is null || FurnitureList.SelectedIndex < 0)
+        if (_isRefreshing || _selectedCategory is null || LabelList.SelectedIndex < 0)
             return;
-        var index = FurnitureList.SelectedIndex;
+        var index = LabelList.SelectedIndex;
         if (index >= _selectedCategory.Items.Count)
             return;
         _selectedItem = _selectedCategory.Items[index];
-        LoadFurnitureEditor(index);
+        LoadLabelEditor(index);
     }
 
-    private void LoadFurnitureEditor(int index)
+    private void LoadLabelEditor(int index)
     {
         if (_selectedItem is null)
             return;
@@ -238,7 +238,7 @@ public sealed partial class MainPage : Page
         _isRefreshing = false;
     }
 
-    private void ClearFurnitureEditor()
+    private void ClearLabelEditor()
     {
         _isRefreshing = true;
         _selectedItem = null;
@@ -253,7 +253,7 @@ public sealed partial class MainPage : Page
         _isRefreshing = false;
     }
 
-    private void FurnitureField_TextChanged(object sender, TextChangedEventArgs e)
+    private void LabelField_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (_isRefreshing || _selectedItem is null)
             return;
@@ -267,17 +267,17 @@ public sealed partial class MainPage : Page
         if (index >= 0)
         {
             _isRefreshing = true;
-            FurnitureList.ItemsSource = CreateFurnitureRows();
-            FurnitureList.SelectedIndex = index;
+            LabelList.ItemsSource = CreateLabelRows();
+            LabelList.SelectedIndex = index;
             _isRefreshing = false;
         }
     }
 
-    private List<FurnitureListEntry> CreateFurnitureRows() =>
+    private List<LabelListEntry> CreateLabelRows() =>
         _selectedCategory!.Items.Select((item, index) =>
         {
             var path = _photoLibrary.GetPhotoPath(_catalog, item.Photo);
-            return new FurnitureListEntry(
+            return new LabelListEntry(
                 $"{index + 1:00}     {ItemSummary(item)}",
                 path is null ? null : new BitmapImage(new Uri(path)));
         }).ToList();
@@ -293,16 +293,16 @@ public sealed partial class MainPage : Page
             return;
         (_selectedCategory.Items[currentIndex], _selectedCategory.Items[targetIndex]) =
             (_selectedCategory.Items[targetIndex], _selectedCategory.Items[currentIndex]);
-        RefreshFurnitureList(targetIndex);
+        RefreshLabelList(targetIndex);
         _selectedItem = _selectedCategory.Items[targetIndex];
-        LoadFurnitureEditor(targetIndex);
+        LoadLabelEditor(targetIndex);
         SaveCatalog();
     }
 
-    private void MoveUpButton_Click(object sender, RoutedEventArgs e) => MoveSelectedFurniture(-1);
-    private void MoveDownButton_Click(object sender, RoutedEventArgs e) => MoveSelectedFurniture(1);
+    private void MoveUpButton_Click(object sender, RoutedEventArgs e) => MoveSelectedLabel(-1);
+    private void MoveDownButton_Click(object sender, RoutedEventArgs e) => MoveSelectedLabel(1);
 
-    private void MoveSelectedFurniture(int offset)
+    private void MoveSelectedLabel(int offset)
     {
         if (_selectedCategory is null || _selectedItem is null)
             return;
@@ -312,9 +312,9 @@ public sealed partial class MainPage : Page
             return;
         (_selectedCategory.Items[currentIndex], _selectedCategory.Items[targetIndex]) =
             (_selectedCategory.Items[targetIndex], _selectedCategory.Items[currentIndex]);
-        RefreshFurnitureList(targetIndex);
+        RefreshLabelList(targetIndex);
         _selectedItem = _selectedCategory.Items[targetIndex];
-        LoadFurnitureEditor(targetIndex);
+        LoadLabelEditor(targetIndex);
         SaveCatalog();
     }
 
@@ -325,8 +325,8 @@ public sealed partial class MainPage : Page
         var index = _selectedCategory.Items.IndexOf(_selectedItem);
         _selectedCategory.Items[index] = new CatalogItem();
         _selectedItem = _selectedCategory.Items[index];
-        RefreshFurnitureList(index);
-        LoadFurnitureEditor(index);
+        RefreshLabelList(index);
+        LoadLabelEditor(index);
         SaveCatalog();
     }
 
@@ -389,13 +389,13 @@ public sealed partial class MainPage : Page
         _isRefreshing = false;
         if (hit.IsCategory)
         {
-            RefreshFurnitureList();
-            ClearFurnitureEditor();
+            RefreshLabelList();
+            ClearLabelEditor();
             return;
         }
-        RefreshFurnitureList(hit.ItemIndex);
+        RefreshLabelList(hit.ItemIndex);
         _selectedItem = hit.Item;
-        LoadFurnitureEditor(hit.ItemIndex);
+        LoadLabelEditor(hit.ItemIndex);
     }
 
     private static bool Matches(string query, CatalogItem item) =>
@@ -493,7 +493,7 @@ public sealed partial class MainPage : Page
         _selectedCategory = _catalog.Pages[0];
         SaveCatalog();
         RefreshCategories();
-        ClearFurnitureEditor();
+        ClearLabelEditor();
     }
 
     private async void ChoosePhotoButton_Click(object sender, RoutedEventArgs e)
@@ -514,7 +514,7 @@ public sealed partial class MainPage : Page
         {
             _selectedItem.Photo = _photoLibrary.AddPhoto(file.Path, _catalog);
             SaveCatalog();
-            RefreshFurnitureList(_selectedCategory?.Items.IndexOf(_selectedItem) ?? -1);
+            RefreshLabelList(_selectedCategory?.Items.IndexOf(_selectedItem) ?? -1);
             LoadPhotoPreview();
             ShowStatus("Foto wurde in die lokale Mediathek übernommen.");
         }
@@ -605,7 +605,7 @@ public sealed partial class MainPage : Page
                 var removedReferences = _photoLibrary.RemovePhoto(_catalog, photoToRemove.Key);
                 SaveCatalog();
                 var selectedIndex = _selectedCategory?.Items.IndexOf(_selectedItem) ?? -1;
-                RefreshFurnitureList(selectedIndex);
+                RefreshLabelList(selectedIndex);
                 LoadPhotoPreview();
                 ShowStatus(removedReferences == 0
                     ? "Foto wurde aus der Mediathek gelöscht."
@@ -626,7 +626,7 @@ public sealed partial class MainPage : Page
         _catalog.Library[photoEntry.Key] = photoEntry.FileName;
         _selectedItem.Photo = photoEntry.Key;
         SaveCatalog();
-        RefreshFurnitureList(_selectedCategory?.Items.IndexOf(_selectedItem) ?? -1);
+        RefreshLabelList(_selectedCategory?.Items.IndexOf(_selectedItem) ?? -1);
         LoadPhotoPreview();
         ShowStatus("Foto aus der lokalen Mediathek wurde zugeordnet.");
     }
@@ -638,7 +638,7 @@ public sealed partial class MainPage : Page
         _selectedItem.Photo = "";
         PhotoPreview.Source = null;
         SaveCatalog();
-        RefreshFurnitureList(_selectedCategory?.Items.IndexOf(_selectedItem) ?? -1);
+        RefreshLabelList(_selectedCategory?.Items.IndexOf(_selectedItem) ?? -1);
     }
 
     private void LoadPhotoPreview()
@@ -852,7 +852,7 @@ public sealed partial class MainPage : Page
             RefreshCategories();
             RefreshBranches();
             LoadEmployeeEditor();
-            ClearFurnitureEditor();
+            ClearLabelEditor();
             ShowStatus(skippedPhotos > 0
                 ? $"Katalog importiert. {skippedPhotos} Foto(s) in einem nicht unterstützten Format wurden ausgelassen; die Artikeldaten wurden übernommen."
                 : "Katalog wurde importiert und lokal gespeichert.",
@@ -897,8 +897,8 @@ public sealed partial class MainPage : Page
             return;
         try
         {
-            _catalog.FurniturePrintLayout.Normalize();
-            var html = A4HtmlExporter.CreateFurnitureHtml(_catalog, _selectedCategory, _photoLibrary);
+            _catalog.LabelLayout.Normalize();
+            var html = A4HtmlExporter.CreateLabelHtml(_catalog, _selectedCategory, _photoLibrary);
             await PreviewAndPrintAsync($"A4-Vorschau · {_selectedCategory.Name}", html);
         }
         catch (Exception ex)
@@ -911,8 +911,8 @@ public sealed partial class MainPage : Page
     {
         try
         {
-            _catalog.FurniturePrintLayout.Normalize();
-            var html = A4HtmlExporter.CreateFurnitureHtml(_catalog, _catalog.Pages, _photoLibrary);
+            _catalog.LabelLayout.Normalize();
+            var html = A4HtmlExporter.CreateLabelHtml(_catalog, _catalog.Pages, _photoLibrary);
             await PreviewAndPrintAsync("A4-Vorschau · alle Kategorien", html);
         }
         catch (Exception ex)
@@ -1005,7 +1005,7 @@ public sealed partial class MainPage : Page
 
     private async void QrCodeZipButton_Click(object sender, RoutedEventArgs e)
     {
-        var layout = _catalog.FurniturePrintLayout;
+        var layout = _catalog.LabelLayout;
         layout.Normalize();
         var products = _catalog.Pages.SelectMany(page => page.Items)
             .Where(item => !string.IsNullOrWhiteSpace(A4HtmlExporter.GetQrContent(item, layout)))
@@ -1049,12 +1049,12 @@ public sealed partial class MainPage : Page
 
     private void LoadLayoutControls()
     {
-        if (_catalog.FurniturePrintLayout is null)
-            _catalog.FurniturePrintLayout = new FurniturePrintLayout();
-        _catalog.FurniturePrintLayout.Normalize();
+        if (_catalog.LabelLayout is null)
+            _catalog.LabelLayout = new LabelPrintLayout();
+        _catalog.LabelLayout.Normalize();
         _isRefreshing = true;
-        CellWidthBox.Value = _catalog.FurniturePrintLayout.CellWidthCm;
-        CellHeightBox.Value = _catalog.FurniturePrintLayout.CellHeightCm;
+        CellWidthBox.Value = _catalog.LabelLayout.CellWidthCm;
+        CellHeightBox.Value = _catalog.LabelLayout.CellHeightCm;
         LayoutElementBox.ItemsSource = LayoutElementNames;
         if (LayoutElementBox.SelectedIndex < 0)
             LayoutElementBox.SelectedIndex = 0;
@@ -1074,10 +1074,10 @@ public sealed partial class MainPage : Page
         if (element is null)
             return;
         _isRefreshing = true;
-        ElementXBox.Maximum = _catalog.FurniturePrintLayout.CellWidthCm;
-        ElementYBox.Maximum = _catalog.FurniturePrintLayout.CellHeightCm;
-        ElementWidthBox.Maximum = _catalog.FurniturePrintLayout.CellWidthCm;
-        ElementHeightBox.Maximum = _catalog.FurniturePrintLayout.CellHeightCm;
+        ElementXBox.Maximum = _catalog.LabelLayout.CellWidthCm;
+        ElementYBox.Maximum = _catalog.LabelLayout.CellHeightCm;
+        ElementWidthBox.Maximum = _catalog.LabelLayout.CellWidthCm;
+        ElementHeightBox.Maximum = _catalog.LabelLayout.CellHeightCm;
         ElementXBox.Value = element.X;
         ElementYBox.Value = element.Y;
         ElementWidthBox.Value = element.Width;
@@ -1091,7 +1091,7 @@ public sealed partial class MainPage : Page
     {
         if (_isRefreshing || double.IsNaN(args.NewValue))
             return;
-        var layout = _catalog.FurniturePrintLayout;
+        var layout = _catalog.LabelLayout;
         if (ReferenceEquals(sender, CellWidthBox))
             layout.CellWidthCm = Math.Clamp(args.NewValue, 2, 5);
         else if (ReferenceEquals(sender, CellHeightBox))
@@ -1125,13 +1125,13 @@ public sealed partial class MainPage : Page
 
     private PrintElementLayout? GetSelectedLayoutElement() => LayoutElementBox.SelectedIndex switch
     {
-        0 => _catalog.FurniturePrintLayout.Photo,
-        1 => _catalog.FurniturePrintLayout.Qr,
-        2 => _catalog.FurniturePrintLayout.Title,
-        3 => _catalog.FurniturePrintLayout.Beco,
-        4 => _catalog.FurniturePrintLayout.Ref,
-        5 => _catalog.FurniturePrintLayout.Price,
-        6 => _catalog.FurniturePrintLayout.Ek,
+        0 => _catalog.LabelLayout.Photo,
+        1 => _catalog.LabelLayout.Qr,
+        2 => _catalog.LabelLayout.Title,
+        3 => _catalog.LabelLayout.Beco,
+        4 => _catalog.LabelLayout.Ref,
+        5 => _catalog.LabelLayout.Price,
+        6 => _catalog.LabelLayout.Ek,
         _ => null
     };
 

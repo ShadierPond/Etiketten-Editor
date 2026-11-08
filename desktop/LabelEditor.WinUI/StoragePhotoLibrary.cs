@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
-using FuniturenEditor.Desktop;
+using LabelEditor.Desktop;
 
-namespace FuniturenEditor_WinUI;
+namespace LabelEditor.WinUI;
 
 /// <summary>
 /// WinUI-compatible counterpart to the WPF photo library. Images are stored
@@ -111,6 +111,36 @@ internal sealed class StoragePhotoLibrary
                 // Keep the source value so the user can reconnect a missing image later.
             }
         }
+
+        foreach (var layout in catalog.Catalogs
+                     .Select(definition => definition.Layout)
+                     .Append(catalog.LabelLayout))
+        {
+            if (string.IsNullOrWhiteSpace(layout.LogoPhotoKey))
+                continue;
+            if (keyMap.TryGetValue(layout.LogoPhotoKey, out var mapped))
+            {
+                changed |= !string.Equals(layout.LogoPhotoKey, mapped, StringComparison.Ordinal);
+                layout.LogoPhotoKey = mapped;
+                continue;
+            }
+            try
+            {
+                layout.LogoPhotoKey = ImportPhotoValue(layout.LogoPhotoKey, sourceDirectory);
+                catalog.Library[layout.LogoPhotoKey] = FindPhotoFile(layout.LogoPhotoKey);
+                changed = true;
+            }
+            catch (UnsupportedStoragePhotoFormatException) when (skipUnsupportedPhotos)
+            {
+                layout.LogoPhotoKey = "";
+                skippedPhotos++;
+                changed = true;
+            }
+            catch (Exception ex) when (!strict && IsRecoverableImageError(ex))
+            {
+                // Keep the source value so the user can reconnect a missing image later.
+            }
+        }
         return changed;
     }
 
@@ -141,6 +171,13 @@ internal sealed class StoragePhotoLibrary
         {
             if (string.Equals(item.Photo, key, StringComparison.Ordinal))
                 item.Photo = "";
+        }
+        foreach (var layout in catalog.Catalogs
+                     .Select(definition => definition.Layout)
+                     .Append(catalog.LabelLayout))
+        {
+            if (string.Equals(layout.LogoPhotoKey, key, StringComparison.Ordinal))
+                layout.LogoPhotoKey = "";
         }
         catalog.Library.Remove(key);
         return references.Count;

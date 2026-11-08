@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace FuniturenEditor.Desktop;
+namespace LabelEditor.Desktop;
 
 public sealed class CatalogData
 {
@@ -9,9 +9,12 @@ public sealed class CatalogData
     public List<EditorCatalog> Catalogs { get; set; } = [];
     public List<CatalogPage> Pages { get; set; } = [];
     public Dictionary<string, string> Library { get; set; } = [];
+    public Dictionary<string, string> PhotoNames { get; set; } = [];
+    public Dictionary<string, DateTimeOffset> PhotoAddedAt { get; set; } = [];
     public List<EmployeePage> EmployeePages { get; set; } = [];
     public EmployeeLayout EmployeeLayout { get; set; } = new();
-    public FurniturePrintLayout FurniturePrintLayout { get; set; } = new();
+    [JsonPropertyName("furniturePrintLayout")]
+    public LabelPrintLayout LabelLayout { get; set; } = new();
     [JsonExtensionData] public Dictionary<string, JsonElement>? AdditionalData { get; set; }
 
     public static CatalogData CreateDefault()
@@ -25,8 +28,9 @@ public sealed class CatalogData
         return catalog;
     }
 
-    public static IReadOnlyList<PhotoReference> GetPhotoReferences(CatalogData catalog, string key) =>
-        catalog.Catalogs
+    public static IReadOnlyList<PhotoReference> GetPhotoReferences(CatalogData catalog, string key)
+    {
+        var itemReferences = catalog.Catalogs
             .SelectMany(definition => definition.Lists.SelectMany(page => page.Items.Select((item, index) =>
             {
                 var photoKeys = (item.FieldValues ?? [])
@@ -41,17 +45,24 @@ public sealed class CatalogData
                     : null;
             })))
             .Where(reference => reference is not null)
-            .Select(reference => reference!)
-            .ToList();
+            .Select(reference => reference!);
+        var logoReferences = catalog.Catalogs
+            .Where(definition => definition.Layout.LogoPhotoKey == key)
+            .Select(definition => new PhotoReference("Logo", definition.Name, 0, key));
+        return itemReferences.Concat(logoReferences).ToList();
+    }
 
     public void Normalize()
     {
         SchemaVersion = Math.Max(SchemaVersion, 4);
         Catalogs ??= [];
         Pages ??= [];
+        Library ??= [];
+        PhotoNames ??= [];
+        PhotoAddedAt ??= [];
         EmployeePages ??= [];
-        FurniturePrintLayout ??= new FurniturePrintLayout();
-        FurniturePrintLayout.Normalize();
+        LabelLayout ??= new LabelPrintLayout();
+        LabelLayout.Normalize();
         for (var index = Pages.Count - 1; index >= 0; index--)
         {
             if (Pages[index] is null)
@@ -68,10 +79,10 @@ public sealed class CatalogData
                 if (page.Items[index] is null)
                     page.Items.RemoveAt(index);
             }
-            while (page.Items.Count < FurniturePrintLayout.TileCount)
+            while (page.Items.Count < LabelLayout.TileCount)
                 page.Items.Add(new CatalogItem());
-            if (page.Items.Count > FurniturePrintLayout.TileCount)
-                page.Items = page.Items.Take(FurniturePrintLayout.TileCount).ToList();
+            if (page.Items.Count > LabelLayout.TileCount)
+                page.Items = page.Items.Take(LabelLayout.TileCount).ToList();
             foreach (var item in page.Items)
             {
                 item.Title ??= "";
@@ -83,7 +94,7 @@ public sealed class CatalogData
                 item.SalesPrice ??= "";
                 item.RecommendedPrice ??= "";
                 item.FieldValues ??= [];
-                foreach (var field in FurniturePrintLayout.Fields)
+                foreach (var field in LabelLayout.Fields)
                 {
                     if (item.FieldValues.ContainsKey(field.Id))
                         continue;
@@ -138,8 +149,9 @@ public sealed class CatalogData
         {
             catalog.Id = string.IsNullOrWhiteSpace(catalog.Id) ? Guid.NewGuid().ToString("N") : catalog.Id.Trim();
             catalog.Name = string.IsNullOrWhiteSpace(catalog.Name) ? "Neuer Katalog" : catalog.Name.Trim();
-            catalog.Layout ??= new FurniturePrintLayout();
+            catalog.Layout ??= new LabelPrintLayout();
             catalog.Layout.Normalize();
+            catalog.ColumnWidths ??= [];
             catalog.Lists ??= [];
             catalog.Lists.RemoveAll(list => list is null);
             if (catalog.Lists.Count == 0)
@@ -196,7 +208,7 @@ public sealed class CatalogData
                 Id = "labels",
                 Name = "Etiketten",
                 Lists = Pages,
-                Layout = FurniturePrintLayout.Copy()
+                Layout = LabelLayout.Copy()
             },
             CreateEmployeeCatalog(EmployeePages)
         ];
@@ -204,7 +216,7 @@ public sealed class CatalogData
 
     private static EditorCatalog CreateEmployeeCatalog(IEnumerable<EmployeePage> employeePages)
     {
-        var layout = new FurniturePrintLayout
+        var layout = new LabelPrintLayout
         {
             Fields =
             [
@@ -265,7 +277,7 @@ public sealed class CatalogData
     {
         var labels = Catalogs.FirstOrDefault(catalog => catalog.Id == "labels");
         if (labels is not null)
-            FurniturePrintLayout = labels.Layout.Copy();
+            LabelLayout = labels.Layout.Copy();
         Pages = labels?.Lists ?? [];
 
         var employees = Catalogs.FirstOrDefault(catalog => catalog.Id == "employees");
@@ -287,7 +299,8 @@ public sealed class EditorCatalog
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "Katalog";
     public List<CatalogPage> Lists { get; set; } = [];
-    public FurniturePrintLayout Layout { get; set; } = new();
+    public LabelPrintLayout Layout { get; set; } = new();
+    public Dictionary<string, double> ColumnWidths { get; set; } = [];
 }
 
 public sealed class CatalogPage
@@ -341,17 +354,34 @@ public sealed class EmployeeLayout
     public bool NameBold { get; set; } = true;
 }
 
-public sealed class FurniturePrintLayout
+public sealed class LabelPrintLayout
 {
     public double CellWidthCm { get; set; } = 3.5;
     public double CellHeightCm { get; set; } = 3.5;
     public string PaperFormat { get; set; } = "A4";
     public string Orientation { get; set; } = "Landscape";
+    public string TileGridAlignment { get; set; } = "TopLeft";
+    [JsonPropertyName("CellContentAlignment")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LegacyCellContentAlignment
+    {
+        get => null;
+        set
+        {
+            if (value is not null)
+                TileGridAlignment = value;
+        }
+    }
     public double HorizontalGapCm { get; set; } = 0.2;
     public double VerticalGapCm { get; set; } = 0.2;
     public int Columns { get; set; } = 5;
     public int TileCount { get; set; } = 15;
     public string MissingBecoText { get; set; } = "OROVIVO";
+    public string LogoPhotoKey { get; set; } = "";
+    public double LogoXcm { get; set; } = 1;
+    public double LogoYcm { get; set; } = 1;
+    public double LogoWidthCm { get; set; } = 2.5;
+    public double LogoHeightCm { get; set; } = 1.5;
     public QrCodeSettings QrCode { get; set; } = new();
     public List<PrintElementLayout> Fields { get; set; } = [];
     public PrintElementLayout Photo { get; set; } = new() { X = 0.15, Y = 0.15, Width = 0.8, Height = 0.8, FontSize = 8 };
@@ -374,11 +404,26 @@ public sealed class FurniturePrintLayout
         Orientation = string.Equals(Orientation, "Portrait", StringComparison.OrdinalIgnoreCase)
             ? "Portrait"
             : "Landscape";
+        TileGridAlignment = TileGridAlignment switch
+        {
+            "TopLeft" or "TopCenter" or "TopRight" or
+            "MiddleLeft" or "Center" or "MiddleRight" or
+            "BottomLeft" or "BottomCenter" or "BottomRight" => TileGridAlignment,
+            _ => "TopLeft"
+        };
         HorizontalGapCm = Math.Clamp(double.IsFinite(HorizontalGapCm) ? HorizontalGapCm : 0.2, 0, 2);
         VerticalGapCm = Math.Clamp(double.IsFinite(VerticalGapCm) ? VerticalGapCm : 0.2, 0, 2);
         Columns = Math.Clamp(Columns, 1, 12);
         TileCount = Math.Clamp(TileCount, 1, 120);
         MissingBecoText = string.IsNullOrWhiteSpace(MissingBecoText) ? "OROVIVO" : MissingBecoText.Trim();
+        LogoPhotoKey ??= "";
+        var (paperWidth, paperHeight) = GetPaperDimensionsCm(PaperFormat);
+        var orientedPaperWidth = Orientation == "Portrait" ? paperWidth : paperHeight;
+        var orientedPaperHeight = Orientation == "Portrait" ? paperHeight : paperWidth;
+        LogoWidthCm = Math.Clamp(double.IsFinite(LogoWidthCm) ? LogoWidthCm : 2.5, 0.1, orientedPaperWidth);
+        LogoHeightCm = Math.Clamp(double.IsFinite(LogoHeightCm) ? LogoHeightCm : 1.5, 0.1, orientedPaperHeight);
+        LogoXcm = Math.Clamp(double.IsFinite(LogoXcm) ? LogoXcm : 1, 0, orientedPaperWidth - LogoWidthCm);
+        LogoYcm = Math.Clamp(double.IsFinite(LogoYcm) ? LogoYcm : 1, 0, orientedPaperHeight - LogoHeightCm);
         QrCode ??= new QrCodeSettings();
         QrCode.Normalize();
         Photo ??= new PrintElementLayout();
@@ -403,6 +448,16 @@ public sealed class FurniturePrintLayout
         }
         foreach (var element in Fields)
             element.Normalize(CellWidthCm, CellHeightCm);
+        var codeField = Fields.FirstOrDefault(field => field.Kind is "Qr" or "Barcode");
+        if (codeField is not null)
+        {
+            if (string.IsNullOrEmpty(codeField.Prefix))
+                codeField.Prefix = QrCode.Prefix;
+            if (string.IsNullOrEmpty(codeField.Suffix))
+                codeField.Suffix = QrCode.Suffix;
+            QrCode.Prefix = "";
+            QrCode.Suffix = "";
+        }
         QrCode.SourceField = ResolveFieldReference(QrCode.SourceField);
         QrCode.FallbackField = ResolveFieldReference(QrCode.FallbackField);
         foreach (var field in Fields.Where(field => field.Kind == "Number"))
@@ -410,6 +465,23 @@ public sealed class FurniturePrintLayout
             if (string.IsNullOrEmpty(field.Suffix) && field.Source is "Price" or "Ek")
                 field.Suffix = " €";
         }
+    }
+
+    public (double Horizontal, double Vertical) GetTileGridAlignmentFactors()
+    {
+        var horizontalFactor = TileGridAlignment switch
+        {
+            "TopCenter" or "Center" or "BottomCenter" => 0.5,
+            "TopRight" or "MiddleRight" or "BottomRight" => 1,
+            _ => 0
+        };
+        var verticalFactor = TileGridAlignment switch
+        {
+            "MiddleLeft" or "Center" or "MiddleRight" => 0.5,
+            "BottomLeft" or "BottomCenter" or "BottomRight" => 1,
+            _ => 0
+        };
+        return (horizontalFactor, verticalFactor);
     }
 
     private string ResolveFieldReference(string reference)
@@ -436,17 +508,23 @@ public sealed class FurniturePrintLayout
     [JsonIgnore]
     public IReadOnlyList<PrintElementLayout> Elements => Fields;
 
-    public FurniturePrintLayout Copy() => new()
+    public LabelPrintLayout Copy() => new()
     {
         CellWidthCm = CellWidthCm,
         CellHeightCm = CellHeightCm,
         PaperFormat = PaperFormat,
         Orientation = Orientation,
+        TileGridAlignment = TileGridAlignment,
         HorizontalGapCm = HorizontalGapCm,
         VerticalGapCm = VerticalGapCm,
         Columns = Columns,
         TileCount = TileCount,
         MissingBecoText = MissingBecoText,
+        LogoPhotoKey = LogoPhotoKey,
+        LogoXcm = LogoXcm,
+        LogoYcm = LogoYcm,
+        LogoWidthCm = LogoWidthCm,
+        LogoHeightCm = LogoHeightCm,
         QrCode = QrCode.Copy(),
         Fields = Fields.Select(field => field.Copy()).ToList(),
         Photo = Photo.Copy(),
@@ -458,17 +536,23 @@ public sealed class FurniturePrintLayout
         Ek = Ek.Copy()
     };
 
-    public void CopyFrom(FurniturePrintLayout other)
+    public void CopyFrom(LabelPrintLayout other)
     {
         CellWidthCm = other.CellWidthCm;
         CellHeightCm = other.CellHeightCm;
         PaperFormat = other.PaperFormat;
         Orientation = other.Orientation;
+        TileGridAlignment = other.TileGridAlignment;
         HorizontalGapCm = other.HorizontalGapCm;
         VerticalGapCm = other.VerticalGapCm;
         Columns = other.Columns;
         TileCount = other.TileCount;
         MissingBecoText = other.MissingBecoText;
+        LogoPhotoKey = other.LogoPhotoKey;
+        LogoXcm = other.LogoXcm;
+        LogoYcm = other.LogoYcm;
+        LogoWidthCm = other.LogoWidthCm;
+        LogoHeightCm = other.LogoHeightCm;
         QrCode = other.QrCode.Copy();
         Fields = other.Fields.Select(field => field.Copy()).ToList();
         Photo = other.Photo.Copy();
@@ -517,6 +601,7 @@ public sealed class PrintElementLayout
     public string Kind { get; set; } = "Text";
     public string Source { get; set; } = "Title";
     public string StaticText { get; set; } = "";
+    public string Prefix { get; set; } = "";
     public string Suffix { get; set; } = "";
     public double X { get; set; }
     public double Y { get; set; }
@@ -525,6 +610,9 @@ public sealed class PrintElementLayout
     public double FontSize { get; set; } = 7;
     public double RotationDegrees { get; set; }
     public bool Bold { get; set; }
+    public bool Italic { get; set; }
+    public bool Underline { get; set; }
+    public string TextAlignment { get; set; } = "Center";
     public bool? AutoShrinkText { get; set; }
 
     public PrintElementLayout Copy() => new()
@@ -534,6 +622,7 @@ public sealed class PrintElementLayout
         Kind = Kind,
         Source = Source,
         StaticText = StaticText,
+        Prefix = Prefix,
         Suffix = Suffix,
         X = X,
         Y = Y,
@@ -542,6 +631,9 @@ public sealed class PrintElementLayout
         FontSize = FontSize,
         RotationDegrees = RotationDegrees,
         Bold = Bold,
+        Italic = Italic,
+        Underline = Underline,
+        TextAlignment = TextAlignment,
         AutoShrinkText = AutoShrinkText
     };
 
@@ -566,7 +658,13 @@ public sealed class PrintElementLayout
         };
         Source = string.IsNullOrWhiteSpace(Source) ? "Title" : Source.Trim();
         StaticText ??= "";
+        Prefix ??= "";
         Suffix ??= "";
+        TextAlignment = TextAlignment switch
+        {
+            "Left" or "Right" => TextAlignment,
+            _ => "Center"
+        };
         X = Math.Clamp(double.IsFinite(X) ? X : 0, 0, cellWidth);
         Y = Math.Clamp(double.IsFinite(Y) ? Y : 0, 0, cellHeight);
         Width = Math.Clamp(double.IsFinite(Width) ? Width : 1, 0, cellWidth - X);

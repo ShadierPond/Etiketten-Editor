@@ -6,14 +6,16 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Media.Media3D;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using Microsoft.Win32;
 
-namespace FuniturenEditor.Desktop;
+namespace LabelEditor.Desktop;
 
 public partial class MainWindow : Window
 {
@@ -22,16 +24,25 @@ public partial class MainWindow : Window
     private readonly PhotoLibrary photoLibrary = new();
     private readonly bool isFirstRun;
     private bool setupCompleted;
+    private bool initializingMainWindow = true;
     private CatalogData data;
     private int catalogIndex;
-    private int furniturePageIndex;
+    private int labelPageIndex;
+    private string? labelNumericSortFieldId;
+    private ListSortDirection labelNumericSortDirection;
+    private double previewWidthRatio = 0.4;
     private bool isUpdatingPageSelectors;
     private bool isSelectingSearchResult;
+    private ContextMenu? openActionMenu;
     private ScrollViewer? previewScrollViewer;
-    private readonly List<Border> previewFurnitureCells = [];
-    private readonly List<DataGridColumn> furnitureFieldColumns = [];
+    private readonly List<Border> previewLabelCells = [];
+    private readonly List<DataGridColumn> labelFieldColumns = [];
+    private readonly Dictionary<DataGridColumn, string> labelColumnFieldIds = [];
+    private EditorCatalog? labelColumnsCatalog;
+    private readonly List<(DataGridColumn Column, DependencyPropertyDescriptor Descriptor, EventHandler Handler)> columnWidthHandlers = [];
     private Border? highlightedPreviewCell;
     private readonly DispatcherTimer previewZoomTimer;
+    private readonly DispatcherTimer columnWidthSaveTimer;
     private int previewDocumentRevision;
     private HwndSource? windowSource;
     private UIElement? previewZoomAnchor;
@@ -39,26 +50,47 @@ public partial class MainWindow : Window
     private Point previewZoomViewportPoint;
     private double pendingPreviewZoomDelta;
     private bool previewZoomRestorePending;
-    private CatalogGridRow? furnitureDragSource;
-    private CatalogGridRow? furnitureDragTarget;
-    private Point furnitureDragStartPoint;
+    private CatalogGridRow? labelDragSource;
+    private CatalogGridRow? labelDragTarget;
+    private CatalogGridRow? labelDropPlaceholder;
+    private DragPreviewAdorner? labelDragAdorner;
+    private AdornerLayer? labelDragAdornerLayer;
+    private int labelDropIndex = -1;
+    private Point labelDragStartPoint;
     private readonly DispatcherTimer highlightTimer;
     private readonly CancellationTokenSource updateCheckCancellation = new();
 
-    public List<string> FurniturePageNames => CurrentCatalog.Lists.Select(page => page.Name).ToList();
+    public List<string> LabelPageNames => CurrentCatalog.Lists.Select(page => page.Name).ToList();
     public List<string> CatalogNames => data.Catalogs.Select(catalog => catalog.Name).ToList();
 
     public MainWindow(LocalStore store, bool isFirstRun = false)
     {
+        AppDiagnostics.Event("mainWindow.construct.start");
         InitializeComponent();
+        AppDiagnostics.Event("mainWindow.xaml.initialize.complete");
         AppDiagnostics.StartUiThreadMonitor(Dispatcher);
+        PreviewMouseDown += ActionMenu_PreviewMouseDown;
         SourceInitialized += MainWindow_SourceInitialized;
         Closed += MainWindow_Closed;
+        Deactivated += (_, _) =>
+        {
+            CloseActionMenu();
+            CloseSearchResults();
+        };
         previewZoomTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(50)
         };
         previewZoomTimer.Tick += PreviewZoomTimer_Tick;
+        columnWidthSaveTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(300)
+        };
+        columnWidthSaveTimer.Tick += (_, _) =>
+        {
+            columnWidthSaveTimer.Stop();
+            Save();
+        };
         highlightTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(1500)
@@ -66,10 +98,15 @@ public partial class MainWindow : Window
         highlightTimer.Tick += (_, _) =>
         {
             highlightTimer.Stop();
-            foreach (var row in FurnitureGrid.Items.OfType<CatalogGridRow>())
+            foreach (var row in LabelGrid.Items.OfType<CatalogGridRow>())
                 row.IsHighlighted = false;
         };
         this.store = store;
+        AppDiagnostics.Event("mainWindow.previewWidth.load.start");
+        previewWidthRatio = Math.Clamp(store.LoadPreviewWidthRatio(), 0.2, 0.75);
+        AppDiagnostics.Event("mainWindow.previewWidth.load.complete");
+        EditorColumn.Width = new GridLength(1 - previewWidthRatio, GridUnitType.Star);
+        PreviewColumn.Width = new GridLength(previewWidthRatio, GridUnitType.Star);
         this.isFirstRun = isFirstRun;
         setupCompleted = !isFirstRun;
         if (isFirstRun)
@@ -77,15 +114,21 @@ public partial class MainWindow : Window
             Opacity = 0;
             ShowInTaskbar = false;
         }
+        AppDiagnostics.Event("mainWindow.catalog.load.start");
         data = store.LoadCatalog();
+        AppDiagnostics.Event("mainWindow.catalog.load.complete");
+        AppDiagnostics.Event("mainWindow.photos.normalize.start");
         if (photoLibrary.NormalizeCatalog(data))
             store.SaveCatalog(data);
+        AppDiagnostics.Event("mainWindow.photos.normalize.complete");
         DataContext = this;
         AppVersionText.Text = $"Version {GetType().Assembly.GetName().Version?.ToString(3) ?? "unbekannt"}";
         DatabasePathText.Text = store.DatabasePath;
         DatabasePathText.ToolTip = store.DatabasePath;
+        AppDiagnostics.Event("mainWindow.pages.refresh.start");
         RefreshPages();
-        RefreshPrintPreview();
+        AppDiagnostics.Event("mainWindow.pages.refresh.complete");
+        initializingMainWindow = false;
         Loaded += async (_, _) =>
         {
             if (this.isFirstRun)
@@ -102,69 +145,168 @@ public partial class MainWindow : Window
         };
         Closing += (_, _) =>
         {
-            FurnitureGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+            LabelGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+            PersistLabelColumnWidths();
+            columnWidthSaveTimer.Stop();
             if (setupCompleted)
                 Save();
         };
     }
 
     private EditorCatalog CurrentCatalog => data.Catalogs[catalogIndex];
-    private CatalogPage CurrentFurniturePage => CurrentCatalog.Lists[furniturePageIndex];
+    private CatalogPage CurrentLabelPage => CurrentCatalog.Lists[labelPageIndex];
 
     private void RefreshPages()
     {
         catalogIndex = Math.Clamp(catalogIndex, 0, data.Catalogs.Count - 1);
-        furniturePageIndex = Math.Clamp(furniturePageIndex, 0, CurrentCatalog.Lists.Count - 1);
+        labelPageIndex = Math.Clamp(labelPageIndex, 0, CurrentCatalog.Lists.Count - 1);
         isUpdatingPageSelectors = true;
         CatalogBox.ItemsSource = CatalogNames;
         CatalogBox.SelectedIndex = catalogIndex;
-        FurniturePageBox.ItemsSource = CurrentCatalog.Lists.Select(page => page.Name).ToList();
-        FurniturePageBox.SelectedIndex = furniturePageIndex;
+        LabelPageBox.ItemsSource = CurrentCatalog.Lists.Select(page => page.Name).ToList();
+        LabelPageBox.SelectedIndex = labelPageIndex;
         isUpdatingPageSelectors = false;
         CatalogHeading.Text = CurrentCatalog.Name;
         CatalogDescription.Text = $"{CurrentCatalog.Lists.Count} Listen · {CurrentCatalog.Layout.Fields.Count} Vorlagenfelder";
-        RefreshFurnitureRows();
+        if (initializingMainWindow)
+            AppDiagnostics.Event("mainWindow.rows.refresh.start");
+        RefreshLabelRows();
+        if (initializingMainWindow)
+            AppDiagnostics.Event("mainWindow.rows.refresh.complete");
+        if (initializingMainWindow)
+            AppDiagnostics.Event("mainWindow.preview.refresh.start");
         RefreshPrintPreview();
+        if (initializingMainWindow)
+            AppDiagnostics.Event("mainWindow.preview.refresh.complete");
         RefreshSearchResults();
     }
 
-    private void RefreshFurnitureRows()
+    private void RefreshLabelRows()
     {
-        if (FurnitureGrid is null || data.Catalogs.Count == 0 || CurrentCatalog.Lists.Count == 0)
+        if (LabelGrid is null || data.Catalogs.Count == 0 || CurrentCatalog.Lists.Count == 0)
             return;
+        var selectedItem = (LabelGrid.SelectedItem as CatalogGridRow)?.Item;
+        if (LabelGrid.SelectedItem is not CatalogGridRow selectedRow ||
+            !ReferenceEquals(selectedRow.Page, CurrentLabelPage))
+            selectedItem = null;
+        var highlightedItem = highlightTimer.IsEnabled
+            ? LabelGrid.Items.OfType<CatalogGridRow>().FirstOrDefault(row => row.IsHighlighted)?.Item
+            : null;
         data.Normalize();
-        RefreshFurnitureFieldColumns();
+        RefreshLabelFieldColumns();
         var query = SearchBox.Text.Trim();
-        FurnitureGrid.ItemsSource = CurrentFurniturePage.Items
-            .Select((item, index) => new CatalogGridRow(
-                CurrentFurniturePage,
-                item,
-                index,
-                index + 1,
-                furniturePageIndex,
-                CurrentCatalog.Layout.Fields
-                    .Where(field => field.Kind == "Photo")
-                    .ToDictionary(field => field.Id, field => photoLibrary.GetPhotoPath(
-                        data, item.FieldValues.GetValueOrDefault(field.Id, item.Photo)))))
-            .Where(row => Matches(query, CurrentFurniturePage.Name, row.Title, row.Beco, row.Ref,
+        var rows = CurrentLabelPage.Items
+            .Select((item, index) => CreateLabelGridRow(CurrentLabelPage, item, index))
+            .Where(row => Matches(query, CurrentLabelPage.Name, row.Title, row.Beco, row.Ref,
                 row.Price, row.Ek, row.SalesPrice, string.Join(" ", row.Item.FieldValues.Values)))
             .ToList();
-        FurnitureCountText.Text = $"  {CurrentFurniturePage.Items.Count} Einträge in „{CurrentFurniturePage.Name}“";
+        if (labelNumericSortFieldId is { } sortFieldId &&
+            CurrentCatalog.Layout.Fields.FirstOrDefault(field => field.Id == sortFieldId && field.Kind == "Number") is { } sortField)
+        {
+            rows.Sort((left, right) => CompareNumericFieldRows(left, right, sortField.Id, labelNumericSortDirection));
+        }
+        if (highlightedItem is not null)
+        {
+            var highlightedRow = rows.FirstOrDefault(row => ReferenceEquals(row.Item, highlightedItem));
+            if (highlightedRow is not null)
+                highlightedRow.IsHighlighted = true;
+        }
+        LabelGrid.ItemsSource = rows;
+        if (selectedItem is not null)
+        {
+            var selectedGridRow = rows.FirstOrDefault(row => ReferenceEquals(row.Item, selectedItem));
+            if (selectedGridRow is not null)
+                LabelGrid.SelectedItem = selectedGridRow;
+        }
+        LabelCountText.Text = $"{CurrentLabelPage.Items.Count} Einträge in „{CurrentLabelPage.Name}“";
     }
 
-    private void RefreshFurnitureFieldColumns()
+    private void LabelGrid_Sorting(object sender, DataGridSortingEventArgs e)
     {
-        foreach (var column in furnitureFieldColumns)
-            FurnitureGrid.Columns.Remove(column);
-        furnitureFieldColumns.Clear();
+        if (labelColumnFieldIds.TryGetValue(e.Column, out var fieldId) &&
+            CurrentCatalog.Layout.Fields.FirstOrDefault(field => field.Id == fieldId && field.Kind == "Number") is not null)
+        {
+            e.Handled = true;
+            labelNumericSortDirection = labelNumericSortFieldId == fieldId &&
+                labelNumericSortDirection == ListSortDirection.Ascending
+                    ? ListSortDirection.Descending
+                    : ListSortDirection.Ascending;
+            labelNumericSortFieldId = fieldId;
+            foreach (var column in LabelGrid.Columns)
+                column.SortDirection = null;
+            e.Column.SortDirection = labelNumericSortDirection;
+            RefreshLabelRows();
+            return;
+        }
 
+        labelNumericSortFieldId = null;
+    }
+
+    private static int CompareNumericFieldRows(
+        CatalogGridRow left,
+        CatalogGridRow right,
+        string fieldId,
+        ListSortDirection direction)
+    {
+        var leftValue = left.FieldValues.GetValueOrDefault(fieldId, "");
+        var rightValue = right.FieldValues.GetValueOrDefault(fieldId, "");
+        var leftHasNumber = TryParseSortableNumber(leftValue, out var leftNumber);
+        var rightHasNumber = TryParseSortableNumber(rightValue, out var rightNumber);
+        if (leftHasNumber != rightHasNumber)
+            return leftHasNumber ? -1 : 1;
+
+        var comparison = leftHasNumber
+            ? leftNumber.CompareTo(rightNumber)
+            : StringComparer.CurrentCultureIgnoreCase.Compare(leftValue, rightValue);
+        if (comparison == 0)
+            comparison = left.Index.CompareTo(right.Index);
+        return direction == ListSortDirection.Ascending ? comparison : -comparison;
+    }
+
+    private static bool TryParseSortableNumber(string value, out decimal number) =>
+        decimal.TryParse(value, NumberStyles.Number, CultureInfo.CurrentCulture, out number) ||
+        decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out number);
+
+    private CatalogGridRow CreateLabelGridRow(CatalogPage page, CatalogItem item, int index) =>
+        new(
+            page,
+            item,
+            index,
+            index + 1,
+            labelPageIndex,
+            CurrentCatalog.Layout.Fields
+                .Where(field => field.Kind == "Photo")
+                .ToDictionary(field => field.Id, field => photoLibrary.GetPhotoPath(
+                    data, item.FieldValues.GetValueOrDefault(field.Id, item.Photo))));
+
+    private void RefreshLabelFieldColumns()
+    {
+        PersistLabelColumnWidths();
+        foreach (var (column, descriptor, handler) in columnWidthHandlers)
+            descriptor.RemoveValueChanged(column, handler);
+        columnWidthHandlers.Clear();
+        foreach (var column in labelFieldColumns)
+        {
+            LabelGrid.Columns.Remove(column);
+            labelColumnFieldIds.Remove(column);
+        }
+        labelFieldColumns.Clear();
+
+        var catalog = CurrentCatalog;
+        labelColumnsCatalog = catalog;
         foreach (var field in CurrentCatalog.Layout.Fields)
         {
+            var hasSavedWidth = catalog.ColumnWidths.TryGetValue(field.Id, out var savedWidth)
+                && double.IsFinite(savedWidth)
+                && savedWidth >= 40;
+            var savedColumnWidth = hasSavedWidth
+                ? new DataGridLength(Math.Clamp(savedWidth, 40, 1200))
+                : new DataGridLength(1, DataGridLengthUnitType.Star);
             DataGridColumn column;
             if (field.Kind == "Photo")
             {
                 var button = new FrameworkElementFactory(typeof(Button));
-                button.SetValue(Button.StyleProperty, FurnitureGrid.Resources["PhotoPickerButton"]);
+                button.SetValue(Button.StyleProperty, LabelGrid.Resources["PhotoPickerButton"]);
                 button.SetValue(FrameworkElement.TagProperty, field.Id);
                 button.SetValue(FrameworkElement.ToolTipProperty, $"Foto für „{field.Name}“ auswählen");
                 button.AddHandler(Button.ClickEvent, new RoutedEventHandler(EditRowPhoto_Click));
@@ -178,7 +320,7 @@ public partial class MainWindow : Window
                 column = new DataGridTemplateColumn
                 {
                     Header = field.Name,
-                    Width = new DataGridLength(82),
+                    Width = hasSavedWidth ? savedColumnWidth : new DataGridLength(82),
                     CellTemplate = template
                 };
             }
@@ -191,26 +333,66 @@ public partial class MainWindow : Window
                     {
                         UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
                     },
-                    Width = new DataGridLength(1, DataGridLengthUnitType.Star),
-                    ElementStyle = (Style)FurnitureGrid.Resources["CenteredCellText"],
-                    EditingElementStyle = (Style)FurnitureGrid.Resources["CenteredCellEditor"]
+                    Width = savedColumnWidth,
+                    ElementStyle = (Style)LabelGrid.Resources["CenteredCellText"],
+                    EditingElementStyle = (Style)LabelGrid.Resources["CenteredCellEditor"]
                 };
             }
 
-            FurnitureGrid.Columns.Add(column);
-            furnitureFieldColumns.Add(column);
+            LabelGrid.Columns.Add(column);
+            labelFieldColumns.Add(column);
+            labelColumnFieldIds[column] = field.Id;
+            if (field.Id == labelNumericSortFieldId)
+                column.SortDirection = labelNumericSortDirection;
+            var descriptor = DependencyPropertyDescriptor.FromProperty(
+                DataGridColumn.WidthProperty, typeof(DataGridColumn));
+            EventHandler handler = (_, _) =>
+            {
+                var width = column.Width.UnitType == DataGridLengthUnitType.Pixel
+                    ? column.Width.Value
+                    : column.ActualWidth;
+                if (!double.IsFinite(width) || width < 40)
+                    return;
+
+                catalog.ColumnWidths[field.Id] = Math.Clamp(width, 40, 1200);
+                columnWidthSaveTimer.Stop();
+                columnWidthSaveTimer.Start();
+            };
+            descriptor.AddValueChanged(column, handler);
+            columnWidthHandlers.Add((column, descriptor, handler));
+        }
+    }
+
+    private void PersistLabelColumnWidths()
+    {
+        if (LabelGrid is null || labelColumnsCatalog is null)
+            return;
+
+        var catalog = labelColumnsCatalog;
+        foreach (var column in labelFieldColumns)
+        {
+            if (!labelColumnFieldIds.TryGetValue(column, out var fieldId))
+                continue;
+            var width = column.Width.UnitType == DataGridLengthUnitType.Pixel
+                ? column.Width.Value
+                : column.ActualWidth;
+            if (double.IsFinite(width) && width >= 40)
+                catalog.ColumnWidths[fieldId] = Math.Clamp(width, 40, 1200);
         }
     }
 
     private static bool Matches(string search, params string?[] fields) =>
         search.Length == 0 || fields.Any(value => value?.Contains(search, StringComparison.CurrentCultureIgnoreCase) == true);
 
-    private void FurniturePageBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void LabelPageBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (isUpdatingPageSelectors || FurniturePageBox.SelectedIndex < 0)
+        if (isUpdatingPageSelectors || LabelPageBox.SelectedIndex < 0)
             return;
-        furniturePageIndex = FurniturePageBox.SelectedIndex;
-        RefreshFurnitureRows();
+        PersistLabelColumnWidths();
+        columnWidthSaveTimer.Stop();
+        Save();
+        labelPageIndex = LabelPageBox.SelectedIndex;
+        RefreshLabelRows();
         RefreshPrintPreview();
     }
 
@@ -218,36 +400,62 @@ public partial class MainWindow : Window
     {
         if (isUpdatingPageSelectors || CatalogBox.SelectedIndex < 0)
             return;
+        PersistLabelColumnWidths();
+        columnWidthSaveTimer.Stop();
+        Save();
         catalogIndex = CatalogBox.SelectedIndex;
-        furniturePageIndex = 0;
+        labelPageIndex = 0;
         RefreshPages();
     }
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        RefreshFurnitureRows();
+        UpdateSearchBoxAffordances();
+        RefreshLabelRows();
         RefreshSearchResults();
     }
 
     private void SearchBox_GotKeyboardFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
     {
+        UpdateSearchBoxAffordances();
         RefreshSearchResults();
+    }
+
+    private void SearchBox_LostKeyboardFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e) =>
+        UpdateSearchBoxAffordances();
+
+    private void UpdateSearchBoxAffordances()
+    {
+        if (SearchBox is null)
+            return;
+
+        var hasText = !string.IsNullOrEmpty(SearchBox.Text);
+        SearchPlaceholder.Visibility = !hasText && !SearchBox.IsKeyboardFocusWithin
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        ClearSearchButton.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ClearSearchButton_Click(object sender, RoutedEventArgs e)
+    {
+        SearchBox.Clear();
+        SearchBox.Focus();
+        SearchBox.CaretIndex = 0;
     }
 
     private void SearchBox_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        RefreshSearchResults();
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, RefreshSearchResults);
     }
 
     private void RefreshSearchResults()
     {
-        if (SearchResultsBox is null)
+        if (SearchResultsBox is null || isSelectingSearchResult)
             return;
         var query = SearchBox.Text.Trim();
-        SearchResultsBox.ItemsSource = null;
         if (query.Length == 0)
         {
-            SearchResultsBox.Visibility = Visibility.Collapsed;
+            SearchResultsPopup.IsOpen = false;
             return;
         }
 
@@ -264,7 +472,7 @@ public partial class MainWindow : Window
                 $"{result.Catalog.Name} · {result.Page.Name} · {result.ItemIndex + 1} · {SearchSummary(result.Item)}"))
             .ToList();
         SearchResultsBox.ItemsSource = results;
-        SearchResultsBox.Visibility = results.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        SearchResultsPopup.IsOpen = results.Count > 0 && SearchBox.IsKeyboardFocusWithin;
     }
 
     private static string SearchSummary(CatalogItem item)
@@ -279,58 +487,65 @@ public partial class MainWindow : Window
             return;
 
         isSelectingSearchResult = true;
-        var pageChanged = catalogIndex != result.CatalogIndex || furniturePageIndex != result.PageIndex;
-        catalogIndex = result.CatalogIndex;
-        furniturePageIndex = result.PageIndex;
-        if (pageChanged)
-            RefreshPages();
-        FurniturePageBox.SelectedIndex = furniturePageIndex;
-        var row = FurnitureGrid.Items.OfType<CatalogGridRow>().FirstOrDefault(candidate => ReferenceEquals(candidate.Item, result.Item));
-        if (row is not null)
+        try
         {
-            FurnitureGrid.SelectedItem = row;
-            FurnitureGrid.ScrollIntoView(row);
-            HighlightFurnitureRow(result.Item);
+            var pageChanged = catalogIndex != result.CatalogIndex || labelPageIndex != result.PageIndex;
+            catalogIndex = result.CatalogIndex;
+            labelPageIndex = result.PageIndex;
+            if (pageChanged)
+                RefreshPages();
+            LabelPageBox.SelectedIndex = labelPageIndex;
+            var row = LabelGrid.Items.OfType<CatalogGridRow>()
+                .FirstOrDefault(candidate => ReferenceEquals(candidate.Item, result.Item));
+            if (row is not null)
+            {
+                LabelGrid.SelectedItem = row;
+                LabelGrid.ScrollIntoView(row);
+                HighlightLabelRow(result.Item);
+            }
+            SearchResultsBox.SelectedIndex = -1;
+            SearchResultsPopup.IsOpen = false;
+            UpdateLabelPreviewHighlight();
         }
-        SearchResultsBox.SelectedIndex = -1;
-        SearchResultsBox.Visibility = Visibility.Collapsed;
-        isSelectingSearchResult = false;
-        UpdateFurniturePreviewHighlight();
+        finally
+        {
+            isSelectingSearchResult = false;
+        }
     }
 
-    private void FurnitureGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void LabelGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
 #if INTERNAL_DIAGNOSTICS
         using var diagnostic = AppDiagnostics.Measure(
             "grid.selection",
-            () => $"added={e.AddedItems.Count};removed={e.RemovedItems.Count};previewCells={previewFurnitureCells.Count}");
+            () => $"added={e.AddedItems.Count};removed={e.RemovedItems.Count};previewCells={previewLabelCells.Count}");
 #endif
-        UpdateFurniturePreviewHighlight();
+        UpdateLabelPreviewHighlight();
     }
 
-    private void PreviewFurnitureItem_Clicked(CatalogItem item)
+    private void PreviewLabelItem_Clicked(CatalogItem item)
     {
 #if INTERNAL_DIAGNOSTICS
         using var diagnostic = AppDiagnostics.Measure(
             "preview.cell.click",
-            () => $"position={CurrentFurniturePage.Items.IndexOf(item) + 1}");
+            () => $"position={CurrentLabelPage.Items.IndexOf(item) + 1}");
 #endif
         SearchBox.Clear();
-        var row = FurnitureGrid.Items.OfType<CatalogGridRow>()
+        var row = LabelGrid.Items.OfType<CatalogGridRow>()
             .FirstOrDefault(candidate => ReferenceEquals(candidate.Item, item));
         if (row is null)
             return;
-        FurnitureGrid.SelectedItem = row;
-        FurnitureGrid.ScrollIntoView(row);
-        HighlightFurnitureRow(item);
-        UpdateFurniturePreviewHighlight();
+        LabelGrid.SelectedItem = row;
+        LabelGrid.ScrollIntoView(row);
+        HighlightLabelRow(item);
+        UpdateLabelPreviewHighlight();
     }
 
-    private void HighlightFurnitureRow(CatalogItem item)
+    private void HighlightLabelRow(CatalogItem item)
     {
         highlightTimer.Stop();
         CatalogGridRow? target = null;
-        foreach (var row in FurnitureGrid.Items.OfType<CatalogGridRow>())
+        foreach (var row in LabelGrid.Items.OfType<CatalogGridRow>())
         {
             row.IsHighlighted = ReferenceEquals(row.Item, item);
             if (row.IsHighlighted)
@@ -345,21 +560,21 @@ public partial class MainWindow : Window
     {
         if (sender is not FrameworkElement { DataContext: CatalogGridRow row })
             return;
-        FurnitureGrid.SelectedItem = row;
-        EditFurniturePhoto(row.Page, row.ItemIndex, (sender as FrameworkElement)?.Tag as string);
+        LabelGrid.SelectedItem = row;
+        EditLabelPhoto(row.Page, row.ItemIndex, (sender as FrameworkElement)?.Tag as string);
     }
 
-    private void EditFurniturePhoto(CatalogPage page, int itemIndex, string? fieldId = null)
+    private void EditLabelPhoto(CatalogPage page, int itemIndex, string? fieldId = null)
     {
-        FurnitureGrid.CommitEdit(DataGridEditingUnit.Cell, true);
-        FurnitureGrid.CommitEdit(DataGridEditingUnit.Row, true);
-        var picker = new PhotoLibraryWindow(data, photoLibrary) { Owner = this };
+        LabelGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        LabelGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        var picker = new PhotoLibraryWindow(data, photoLibrary, PersistCatalogChanges) { Owner = this };
         picker.Closed += (_, _) =>
         {
             if (!picker.HasChanges)
                 return;
             Save();
-            RefreshFurnitureRows();
+            RefreshLabelRows();
             RefreshPrintPreview();
         };
         if (picker.ShowDialog() != true || picker.SelectedPhotoKey is null)
@@ -378,69 +593,71 @@ public partial class MainWindow : Window
             item.Photo = picker.SelectedPhotoKey;
         }
         Save();
-        RefreshFurnitureRows();
+        RefreshLabelRows();
         RefreshPrintPreview();
     }
 
-    private void MoveFurnitureUp_Click(object sender, RoutedEventArgs e) => MoveSelectedFurniture(-1);
+    private void MoveLabelUp_Click(object sender, RoutedEventArgs e) => MoveSelectedLabel(-1);
 
-    private void MoveFurnitureDown_Click(object sender, RoutedEventArgs e) => MoveSelectedFurniture(1);
+    private void MoveLabelDown_Click(object sender, RoutedEventArgs e) => MoveSelectedLabel(1);
 
-    private void MoveFurnitureTo_Click(object sender, RoutedEventArgs e)
+    private void MoveLabelTo_Click(object sender, RoutedEventArgs e)
     {
-        if (FurnitureGrid.SelectedItem is not CatalogGridRow row)
+        if (LabelGrid.SelectedItem is not CatalogGridRow row)
         {
             MessageBox.Show("Wählen Sie zuerst einen Eintrag aus.", "Eintrag verschieben",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
         var target = TextPromptWindow.Show(this, "Eintrag verschieben",
-            $"Neue Position (1–{CurrentFurniturePage.Items.Count})", (row.ItemIndex + 1).ToString());
+            $"Neue Position (1–{CurrentLabelPage.Items.Count})", (row.ItemIndex + 1).ToString());
         if (target is null)
             return;
-        if (!int.TryParse(target, out var targetPosition) || targetPosition is < 1 || targetPosition > CurrentFurniturePage.Items.Count)
+        if (!int.TryParse(target, out var targetPosition) || targetPosition is < 1 || targetPosition > CurrentLabelPage.Items.Count)
         {
-            MessageBox.Show($"Geben Sie eine Position von 1 bis {CurrentFurniturePage.Items.Count} ein.", "Eintrag verschieben",
+            MessageBox.Show($"Geben Sie eine Position von 1 bis {CurrentLabelPage.Items.Count} ein.", "Eintrag verschieben",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-        MoveFurnitureTo(row, targetPosition - 1);
+        MoveLabelTo(row, targetPosition - 1);
     }
 
-    private void FurnitureGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private void LabelGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         var cell = FindVisualAncestor<DataGridCell>(e.OriginalSource as DependencyObject);
-        if (cell?.Column.DisplayIndex != 0 || cell.DataContext is not CatalogGridRow row)
+        if (cell?.Column.DisplayIndex != 0 ||
+            cell.DataContext is not CatalogGridRow { IsDropPlaceholder: false } row)
             return;
 
-        furnitureDragSource = row;
-        furnitureDragStartPoint = e.GetPosition(FurnitureGrid);
+        labelDragSource = row;
+        labelDragStartPoint = e.GetPosition(LabelGrid);
     }
 
-    private void FurnitureGrid_PreviewMouseMove(object sender, MouseEventArgs e)
+    private void LabelGrid_PreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if (furnitureDragSource is null || e.LeftButton != MouseButtonState.Pressed)
+        if (labelDragSource is null || e.LeftButton != MouseButtonState.Pressed)
             return;
 
-        var pointer = e.GetPosition(FurnitureGrid);
-        if (Math.Abs(pointer.X - furnitureDragStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
-            Math.Abs(pointer.Y - furnitureDragStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
+        var pointer = e.GetPosition(LabelGrid);
+        if (Math.Abs(pointer.X - labelDragStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(pointer.Y - labelDragStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
             return;
 
-        var source = furnitureDragSource;
-        FurnitureGrid.SelectedItem = source;
-        FurnitureGrid.Cursor = Cursors.SizeAll;
-        DragDrop.DoDragDrop(FurnitureGrid, source, DragDropEffects.Move);
-        ResetFurnitureDrag();
+        var source = labelDragSource;
+        LabelGrid.SelectedItem = source;
+        LabelGrid.Cursor = Cursors.SizeAll;
+        StartLabelDragPreview(source);
+        DragDrop.DoDragDrop(LabelGrid, source, DragDropEffects.Move);
+        ResetLabelDrag();
         e.Handled = true;
     }
 
-    private void FurnitureGrid_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    private void LabelGrid_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        ResetFurnitureDrag();
+        ResetLabelDrag();
     }
 
-    private void FurnitureGrid_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    private void LabelGrid_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
         var dataGridRow = FindVisualAncestor<DataGridRow>(e.OriginalSource as DependencyObject);
         if (dataGridRow?.Item is not CatalogGridRow row)
@@ -449,43 +666,56 @@ public partial class MainWindow : Window
             return;
         }
 
-        FurnitureGrid.SelectedItem = row;
+        LabelGrid.SelectedItem = row;
         var itemIndex = row.Page.Items.IndexOf(row.Item);
-        MoveFurnitureUpMenuItem.IsEnabled = itemIndex > 0;
-        MoveFurnitureDownMenuItem.IsEnabled = itemIndex >= 0 && itemIndex < row.Page.Items.Count - 1;
+        MoveLabelUpMenuItem.IsEnabled = itemIndex > 0;
+        MoveLabelDownMenuItem.IsEnabled = itemIndex >= 0 && itemIndex < row.Page.Items.Count - 1;
+        SaveItemCodeMenuItem.Header = PrintService.IsBarcodeField(CurrentCatalog.Layout)
+            ? "Barcode speichern…"
+            : "QR-Code speichern…";
+        SaveItemCodeMenuItem.IsEnabled =
+            !string.IsNullOrWhiteSpace(PrintService.GetQrContent(row.Item, CurrentCatalog.Layout));
+        DownloadItemPhotoMenuItem.IsEnabled = FindItemPhotoPath(row.Item) is not null;
     }
 
-    private void FurnitureGrid_DragOver(object sender, DragEventArgs e)
+    private void LabelGrid_DragOver(object sender, DragEventArgs e)
     {
         if (e.Data.GetData(typeof(CatalogGridRow)) is not CatalogGridRow source)
             return;
 
         var targetRow = FindVisualAncestor<DataGridRow>(e.OriginalSource as DependencyObject);
         var target = targetRow?.Item as CatalogGridRow;
-        var targetIndex = targetRow is null
-            ? -1
-            : GetFurnitureDropIndex(source, targetRow, e.GetPosition(targetRow));
+        var targetIndex = GetLabelDropIndex(source, targetRow, e.GetPosition(LabelGrid),
+            targetRow is null ? default : e.GetPosition(targetRow));
         var canDrop = targetIndex >= 0;
 
-        SetFurnitureDragTarget(canDrop ? target : null);
+        SetLabelDragTarget(canDrop && target is { IsDropPlaceholder: false } ? target : null);
+        if (canDrop)
+        {
+            UpdateLabelDragPreview(source, targetIndex);
+            labelDragAdorner?.SetPosition(e.GetPosition(LabelGrid));
+        }
+        else
+        {
+            labelDropIndex = -1;
+        }
         e.Effects = canDrop ? DragDropEffects.Move : DragDropEffects.None;
         e.Handled = true;
     }
 
-    private void FurnitureGrid_Drop(object sender, DragEventArgs e)
+    private void LabelGrid_Drop(object sender, DragEventArgs e)
     {
         if (e.Data.GetData(typeof(CatalogGridRow)) is not CatalogGridRow source)
             return;
 
         var targetRow = FindVisualAncestor<DataGridRow>(e.OriginalSource as DependencyObject);
-        var targetIndex = targetRow is null
-            ? -1
-            : GetFurnitureDropIndex(source, targetRow, e.GetPosition(targetRow));
+        var targetIndex = GetLabelDropIndex(source, targetRow, e.GetPosition(LabelGrid),
+            targetRow is null ? default : e.GetPosition(targetRow));
 
-        ResetFurnitureDrag();
+        ResetLabelDrag();
         if (targetIndex >= 0)
         {
-            MoveFurnitureTo(source, targetIndex);
+            MoveLabelTo(source, targetIndex);
             e.Effects = DragDropEffects.Move;
         }
         else
@@ -495,11 +725,27 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private static int GetFurnitureDropIndex(CatalogGridRow source, DataGridRow targetRow, Point position)
+    private int GetLabelDropIndex(
+        CatalogGridRow source,
+        DataGridRow? targetRow,
+        Point gridPosition,
+        Point rowPosition)
     {
+        if (targetRow is null)
+        {
+            var headerHeight = FindVisualChild<DataGridColumnHeadersPresenter>(LabelGrid)?.ActualHeight ?? 0;
+            return gridPosition.Y >= headerHeight && gridPosition.Y <= LabelGrid.ActualHeight
+                ? source.Page.Items.Count - 1
+                : -1;
+        }
+
         if (targetRow.Item is not CatalogGridRow target ||
-            !ReferenceEquals(target.Page, source.Page) ||
-            ReferenceEquals(target.Item, source.Item))
+            !ReferenceEquals(target.Page, source.Page))
+            return -1;
+
+        if (target.IsDropPlaceholder)
+            return target.DropIndex;
+        if (ReferenceEquals(target.Item, source.Item))
             return -1;
 
         var sourceIndex = source.Page.Items.IndexOf(source.Item);
@@ -507,11 +753,65 @@ public partial class MainWindow : Window
         if (sourceIndex < 0 || targetIndex < 0)
             return -1;
 
-        var dropAfter = position.Y >= targetRow.ActualHeight / 2;
+        var dropAfter = rowPosition.Y >= targetRow.ActualHeight / 2;
         var insertionIndex = sourceIndex < targetIndex
             ? targetIndex - (dropAfter ? 0 : 1)
             : targetIndex + (dropAfter ? 1 : 0);
         return Math.Clamp(insertionIndex, 0, source.Page.Items.Count - 1);
+    }
+
+    private void StartLabelDragPreview(CatalogGridRow source)
+    {
+        if (LabelGrid.ItemContainerGenerator.ContainerFromItem(source) is not DataGridRow sourceRow ||
+            sourceRow.ActualWidth <= 0 ||
+            sourceRow.ActualHeight <= 0)
+            return;
+
+        var bitmap = new RenderTargetBitmap(
+            (int)Math.Ceiling(sourceRow.ActualWidth),
+            (int)Math.Ceiling(sourceRow.ActualHeight),
+            96,
+            96,
+            PixelFormats.Pbgra32);
+        bitmap.Render(sourceRow);
+        bitmap.Freeze();
+
+        labelDragAdornerLayer = AdornerLayer.GetAdornerLayer(LabelGrid);
+        if (labelDragAdornerLayer is null)
+            return;
+
+        labelDragAdorner = new DragPreviewAdorner(LabelGrid, bitmap);
+        labelDragAdornerLayer.Add(labelDragAdorner);
+        labelDragAdorner.SetPosition(Mouse.GetPosition(LabelGrid));
+        labelDropIndex = source.ItemIndex;
+        UpdateLabelDragPreview(source, labelDropIndex);
+    }
+
+    private void UpdateLabelDragPreview(CatalogGridRow source, int insertionIndex)
+    {
+        if (labelDropPlaceholder is not null && labelDropIndex == insertionIndex)
+            return;
+
+        labelDropIndex = insertionIndex;
+        labelDropPlaceholder = new CatalogGridRow(
+            source.Page,
+            new CatalogItem(),
+            insertionIndex,
+            insertionIndex + 1,
+            labelPageIndex,
+            new Dictionary<string, string?>())
+        {
+            IsDropPlaceholder = true,
+            DropIndex = insertionIndex
+        };
+
+        var rows = source.Page.Items
+            .Select((item, index) => (item, index))
+            .Where(entry => !ReferenceEquals(entry.item, source.Item))
+            .Select(entry => CreateLabelGridRow(source.Page, entry.item, entry.index))
+            .ToList();
+        rows.Insert(Math.Clamp(insertionIndex, 0, rows.Count), labelDropPlaceholder);
+        LabelGrid.ItemsSource = rows;
     }
 
     private static T? FindVisualAncestor<T>(DependencyObject? element) where T : DependencyObject
@@ -532,29 +832,38 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private void SetFurnitureDragTarget(CatalogGridRow? target)
+    private void SetLabelDragTarget(CatalogGridRow? target)
     {
-        if (ReferenceEquals(furnitureDragTarget, target))
+        if (ReferenceEquals(labelDragTarget, target))
             return;
 
-        if (furnitureDragTarget is not null)
-            furnitureDragTarget.IsDragTarget = false;
+        if (labelDragTarget is not null)
+            labelDragTarget.IsDragTarget = false;
 
-        furnitureDragTarget = target;
-        if (furnitureDragTarget is not null)
-            furnitureDragTarget.IsDragTarget = true;
+        labelDragTarget = target;
+        if (labelDragTarget is not null)
+            labelDragTarget.IsDragTarget = true;
     }
 
-    private void ResetFurnitureDrag()
+    private void ResetLabelDrag()
     {
-        SetFurnitureDragTarget(null);
-        furnitureDragSource = null;
-        FurnitureGrid.Cursor = null;
+        SetLabelDragTarget(null);
+        if (labelDragAdorner is not null && labelDragAdornerLayer is not null)
+            labelDragAdornerLayer.Remove(labelDragAdorner);
+        labelDragAdorner = null;
+        labelDragAdornerLayer = null;
+        var hadDropPreview = labelDropPlaceholder is not null;
+        labelDropPlaceholder = null;
+        labelDropIndex = -1;
+        labelDragSource = null;
+        LabelGrid.Cursor = null;
+        if (hadDropPreview && data.Catalogs.Count > 0)
+            RefreshLabelRows();
     }
 
-    private void MoveSelectedFurniture(int direction)
+    private void MoveSelectedLabel(int direction)
     {
-        if (FurnitureGrid.SelectedItem is not CatalogGridRow row)
+        if (LabelGrid.SelectedItem is not CatalogGridRow row)
         {
             MessageBox.Show("Wählen Sie zuerst einen Eintrag aus.", "Eintrag verschieben",
                 MessageBoxButton.OK, MessageBoxImage.Information);
@@ -562,10 +871,10 @@ public partial class MainWindow : Window
         }
 
         var currentIndex = row.Page.Items.IndexOf(row.Item);
-        MoveFurnitureTo(row, currentIndex + direction);
+        MoveLabelTo(row, currentIndex + direction);
     }
 
-    private void MoveFurnitureTo(CatalogGridRow row, int targetIndex)
+    private void MoveLabelTo(CatalogGridRow row, int targetIndex)
     {
         var currentIndex = row.Page.Items.IndexOf(row.Item);
         if (currentIndex < 0 || targetIndex < 0 || targetIndex >= row.Page.Items.Count)
@@ -573,32 +882,69 @@ public partial class MainWindow : Window
         if (targetIndex == currentIndex)
             return;
 
-        FurnitureGrid.CommitEdit(DataGridEditingUnit.Cell, true);
-        FurnitureGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        LabelGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        LabelGrid.CommitEdit(DataGridEditingUnit.Row, true);
         var item = row.Page.Items[currentIndex];
         row.Page.Items.RemoveAt(currentIndex);
         row.Page.Items.Insert(targetIndex, item);
-        RefreshFurnitureRows();
-        var movedRow = FurnitureGrid.Items.OfType<CatalogGridRow>()
+        RefreshLabelRows();
+        var movedRow = LabelGrid.Items.OfType<CatalogGridRow>()
             .FirstOrDefault(candidate => ReferenceEquals(candidate.Item, row.Item));
         if (movedRow is not null)
         {
-            FurnitureGrid.SelectedItem = movedRow;
-            FurnitureGrid.ScrollIntoView(movedRow);
+            LabelGrid.SelectedItem = movedRow;
+            LabelGrid.ScrollIntoView(movedRow);
         }
         Save();
         RefreshPrintPreview();
     }
 
-    private void EditFurnitureLayout_Click(object sender, RoutedEventArgs e)
+    private void EditLabelLayout_Click(object sender, RoutedEventArgs e)
     {
-        var sample = FurnitureGrid.SelectedItem is CatalogGridRow selected ? selected.Item : CurrentFurniturePage.Items[0];
+        PersistLabelColumnWidths();
+        var sample = LabelGrid.SelectedItem is CatalogGridRow selected ? selected.Item : CurrentLabelPage.Items[0];
         var oldFieldIds = CurrentCatalog.Layout.Fields.Select(field => field.Id).ToHashSet(StringComparer.Ordinal);
-        var editor = new FurnitureLayoutWindow(data, sample, photoLibrary, CurrentCatalog.Layout) { Owner = this };
+        var editor = new LabelLayoutWindow(data, sample, photoLibrary, CurrentCatalog.Layout) { Owner = this };
         if (editor.ShowDialog() != true)
             return;
 
+        var targetEntryCount = editor.Result.TileCount;
+        var entriesToRemove = CurrentCatalog.Lists
+            .SelectMany(page => page.Items.Skip(targetEntryCount))
+            .Count(HasLabelData);
+        if (entriesToRemove > 0 &&
+            !ConfirmationPromptWindow.Show(
+                this,
+                "Einträge entfernen?",
+                $"Die Anzahl der Einträge je Liste wird auf {targetEntryCount} reduziert. " +
+                $"Dabei werden {entriesToRemove} ausgefüllte Einträge am Ende der Listen entfernt. " +
+                "Möchten Sie fortfahren?",
+                "Einträge entfernen"))
+            return;
+
+        if (editor.PendingCompanyLogoPath is { } logoPath)
+        {
+            try
+            {
+                editor.Result.LogoPhotoKey = photoLibrary.AddPhoto(logoPath, data);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException or InvalidDataException or ArgumentException)
+            {
+                MessageBox.Show(this, $"Das Firmenlogo konnte nicht gespeichert werden.\n\n{ex.Message}",
+                    "Katalogvorlage", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+        }
+
         CurrentCatalog.Layout.CopyFrom(editor.Result);
+        foreach (var page in CurrentCatalog.Lists)
+        {
+            if (page.Items.Count > targetEntryCount)
+                page.Items.RemoveRange(targetEntryCount, page.Items.Count - targetEntryCount);
+            while (page.Items.Count < targetEntryCount)
+                page.Items.Add(new CatalogItem());
+        }
+
         var currentFields = CurrentCatalog.Layout.Fields;
         var currentFieldIds = currentFields.Select(field => field.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var item in CurrentCatalog.Lists.SelectMany(page => page.Items))
@@ -609,16 +955,97 @@ public partial class MainWindow : Window
                 item.FieldValues.TryAdd(field.Id, "");
         }
         Save();
-        RefreshFurnitureRows();
+        RefreshLabelRows();
         RefreshPrintPreview();
     }
 
-    private void FurnitureGrid_CellEditEnding(object? sender, DataGridCellEditEndingEventArgs e) =>
+    private static bool HasLabelData(CatalogItem item) =>
+        !string.IsNullOrWhiteSpace(item.Title) ||
+        !string.IsNullOrWhiteSpace(item.Beco) ||
+        !string.IsNullOrWhiteSpace(item.Ref) ||
+        !string.IsNullOrWhiteSpace(item.Photo) ||
+        !string.IsNullOrWhiteSpace(item.Price) ||
+        !string.IsNullOrWhiteSpace(item.Ek) ||
+        !string.IsNullOrWhiteSpace(item.SalesPrice) ||
+        !string.IsNullOrWhiteSpace(item.RecommendedPrice) ||
+        item.FieldValues.Values.Any(value => !string.IsNullOrWhiteSpace(value)) ||
+        item.AdditionalData is { Count: > 0 };
+
+    private void LabelGrid_CellEditEnding(object? sender, DataGridCellEditEndingEventArgs e)
+    {
+        if (e.EditingElement is TextBox textBox)
+        {
+            textBox.PreviewTextInput -= NumberField_PreviewTextInput;
+            DataObject.RemovePastingHandler(textBox, NumberField_Pasting);
+        }
+
         Dispatcher.BeginInvoke(() =>
         {
             Save();
             RefreshPrintPreview();
         }, DispatcherPriority.Background);
+    }
+
+    private void LabelGrid_PreparingCellForEdit(object? sender, DataGridPreparingCellForEditEventArgs e)
+    {
+        if (e.EditingElement is not TextBox textBox ||
+            !labelColumnFieldIds.TryGetValue(e.Column, out var fieldId) ||
+            CurrentCatalog.Layout.Fields.FirstOrDefault(field => field.Id == fieldId)?.Kind != "Number")
+            return;
+
+        textBox.PreviewTextInput += NumberField_PreviewTextInput;
+        DataObject.AddPastingHandler(textBox, NumberField_Pasting);
+        textBox.Tag = fieldId;
+    }
+
+    private void NumberField_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (sender is not TextBox textBox)
+            return;
+
+        e.Handled = !IsValidNumberFieldReplacement(
+            textBox.Text,
+            textBox.SelectionStart,
+            textBox.SelectionLength,
+            e.Text);
+    }
+
+    private void NumberField_Pasting(object sender, DataObjectPastingEventArgs e)
+    {
+        if (sender is not TextBox textBox)
+            return;
+
+        var pastedText = e.DataObject.GetData(DataFormats.UnicodeText) as string
+            ?? e.DataObject.GetData(DataFormats.Text) as string
+            ?? "";
+        if (!IsValidNumberFieldReplacement(
+                textBox.Text,
+                textBox.SelectionStart,
+                textBox.SelectionLength,
+                pastedText))
+            e.CancelCommand();
+    }
+
+    private static bool IsValidNumberFieldReplacement(
+        string currentText,
+        int selectionStart,
+        int selectionLength,
+        string replacement)
+    {
+        var candidate = currentText.Remove(selectionStart, selectionLength)
+            .Insert(selectionStart, replacement);
+        var decimalSeparators = 0;
+        foreach (var character in candidate)
+        {
+            if (char.IsDigit(character))
+                continue;
+            if (character == ',' && ++decimalSeparators <= 1)
+                continue;
+            return false;
+        }
+
+        return true;
+    }
 
     private bool Save()
     {
@@ -639,56 +1066,58 @@ public partial class MainWindow : Window
         }
     }
 
-    private void AddFurniturePage_Click(object sender, RoutedEventArgs e)
+    private void PersistCatalogChanges() => Save();
+
+    private void AddLabelPage_Click(object sender, RoutedEventArgs e)
     {
         var name = TextPromptWindow.Show(this, "Neue Liste", "Name der Liste", "Neue Liste");
         if (name is null)
             return;
         CurrentCatalog.Lists.Add(CreateNewList(NonEmptyName(name, "Neue Liste"), CurrentCatalog.Layout.TileCount));
-        furniturePageIndex = CurrentCatalog.Lists.Count - 1;
+        labelPageIndex = CurrentCatalog.Lists.Count - 1;
         RefreshPages();
         Save();
     }
 
-    private void RenameFurniturePage_Click(object sender, RoutedEventArgs e)
+    private void RenameLabelPage_Click(object sender, RoutedEventArgs e)
     {
-        var name = TextPromptWindow.Show(this, "Liste umbenennen", "Neuer Listenname", CurrentFurniturePage.Name);
+        var name = TextPromptWindow.Show(this, "Liste umbenennen", "Neuer Listenname", CurrentLabelPage.Name);
         if (name is null)
             return;
-        CurrentFurniturePage.Name = NonEmptyName(name, CurrentFurniturePage.Name);
+        CurrentLabelPage.Name = NonEmptyName(name, CurrentLabelPage.Name);
         RefreshPages();
         Save();
     }
 
-    private void DeleteFurniturePage_Click(object sender, RoutedEventArgs e)
+    private void DeleteLabelPage_Click(object sender, RoutedEventArgs e)
     {
         var replacesLastPage = CurrentCatalog.Lists.Count == 1;
         var replacementMessage = replacesLastPage ? "\nEine leere Liste wird als Ersatz angelegt." : "";
         if (!ConfirmationPromptWindow.Show(
                 this,
                 "Liste löschen",
-                $"Liste „{CurrentFurniturePage.Name}“ einschließlich aller Einträge löschen?{replacementMessage}",
+                $"Liste „{CurrentLabelPage.Name}“ einschließlich aller Einträge löschen?{replacementMessage}",
                 "Löschen"))
             return;
 
         if (replacesLastPage)
         {
-            CurrentCatalog.Lists[furniturePageIndex] = CreateNewList(CreateUnusedFurniturePageName(), CurrentCatalog.Layout.TileCount);
+            CurrentCatalog.Lists[labelPageIndex] = CreateNewList(CreateUnusedLabelPageName(), CurrentCatalog.Layout.TileCount);
         }
         else
         {
-            CurrentCatalog.Lists.RemoveAt(furniturePageIndex);
-            furniturePageIndex = Math.Min(furniturePageIndex, CurrentCatalog.Lists.Count - 1);
+            CurrentCatalog.Lists.RemoveAt(labelPageIndex);
+            labelPageIndex = Math.Min(labelPageIndex, CurrentCatalog.Lists.Count - 1);
         }
         RefreshPages();
         Save();
     }
 
-    private string CreateUnusedFurniturePageName()
+    private string CreateUnusedLabelPageName()
     {
         const string baseName = "Neue Liste";
         var existingNames = CurrentCatalog.Lists
-            .Where((_, index) => index != furniturePageIndex)
+            .Where((_, index) => index != labelPageIndex)
             .Select(page => page.Name)
             .ToHashSet(StringComparer.CurrentCultureIgnoreCase);
         if (!existingNames.Contains(baseName))
@@ -716,7 +1145,7 @@ public partial class MainWindow : Window
         if (name is null)
             return;
 
-        var layout = new FurniturePrintLayout();
+        var layout = new LabelPrintLayout();
         layout.Normalize();
         var catalog = new EditorCatalog
         {
@@ -726,7 +1155,7 @@ public partial class MainWindow : Window
         };
         data.Catalogs.Add(catalog);
         catalogIndex = data.Catalogs.Count - 1;
-        furniturePageIndex = 0;
+        labelPageIndex = 0;
         RefreshPages();
         Save();
     }
@@ -758,14 +1187,14 @@ public partial class MainWindow : Window
 
         data.Catalogs.RemoveAt(catalogIndex);
         catalogIndex = Math.Min(catalogIndex, data.Catalogs.Count - 1);
-        furniturePageIndex = 0;
+        labelPageIndex = 0;
         RefreshPages();
         Save();
     }
 
     private void ResetItem_Click(object sender, RoutedEventArgs e)
     {
-        if (FurnitureGrid.SelectedItem is not CatalogGridRow row)
+        if (LabelGrid.SelectedItem is not CatalogGridRow row)
         {
             MessageBox.Show("Wählen Sie zuerst einen Eintrag aus.", "Eintrag zurücksetzen",
                 MessageBoxButton.OK, MessageBoxImage.Information);
@@ -774,23 +1203,23 @@ public partial class MainWindow : Window
         if (!ConfirmationPromptWindow.Show(
                 this, "Eintrag zurücksetzen", $"Eintrag {row.Index} zurücksetzen?", "Zurücksetzen"))
             return;
-        CurrentFurniturePage.Items[row.Index - 1] = new CatalogItem();
-        RefreshFurnitureRows();
+        CurrentLabelPage.Items[row.Index - 1] = new CatalogItem();
+        RefreshLabelRows();
         RefreshPrintPreview();
         Save();
     }
 
-    private void DeleteFurnitureItem_Click(object sender, RoutedEventArgs e)
+    private void DeleteLabelItem_Click(object sender, RoutedEventArgs e)
     {
-        if (FurnitureGrid.SelectedItem is not CatalogGridRow row)
+        if (LabelGrid.SelectedItem is not CatalogGridRow row)
         {
             MessageBox.Show("Wählen Sie zuerst einen Artikel aus.", "Artikel löschen",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        FurnitureGrid.CommitEdit(DataGridEditingUnit.Cell, true);
-        FurnitureGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        LabelGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        LabelGrid.CommitEdit(DataGridEditingUnit.Row, true);
         var itemIndex = row.Page.Items.IndexOf(row.Item);
         if (itemIndex < 0)
             return;
@@ -804,15 +1233,15 @@ public partial class MainWindow : Window
 
         row.Page.Items.RemoveAt(itemIndex);
         row.Page.Items.Add(new CatalogItem());
-        RefreshFurnitureRows();
+        RefreshLabelRows();
 
         var nextItem = row.Page.Items[Math.Min(itemIndex, row.Page.Items.Count - 1)];
-        var nextRow = FurnitureGrid.Items.OfType<CatalogGridRow>()
+        var nextRow = LabelGrid.Items.OfType<CatalogGridRow>()
             .FirstOrDefault(candidate => ReferenceEquals(candidate.Item, nextItem));
         if (nextRow is not null)
         {
-            FurnitureGrid.SelectedItem = nextRow;
-            FurnitureGrid.ScrollIntoView(nextRow);
+            LabelGrid.SelectedItem = nextRow;
+            LabelGrid.ScrollIntoView(nextRow);
         }
 
         Save();
@@ -843,7 +1272,7 @@ public partial class MainWindow : Window
 
         data = setup.Result;
         catalogIndex = 0;
-        furniturePageIndex = 0;
+        labelPageIndex = 0;
         if (!Save())
             return false;
 
@@ -939,7 +1368,7 @@ public partial class MainWindow : Window
                 imported, Path.GetDirectoryName(fileName));
             data = imported;
             catalogIndex = 0;
-            furniturePageIndex = 0;
+            labelPageIndex = 0;
             RefreshPages();
             Save();
             if (skippedPhotos > 0)
@@ -964,7 +1393,7 @@ public partial class MainWindow : Window
         {
             Title = "Katalog exportieren",
             Filter = "JSON-Dateien (*.json)|*.json",
-            FileName = "furnituren-daten.json",
+            FileName = "labeln-daten.json",
             AddExtension = true
         };
         if (dialog.ShowDialog(this) != true)
@@ -983,7 +1412,7 @@ public partial class MainWindow : Window
 
     private void CheckUpdates_Click(object sender, RoutedEventArgs e)
     {
-        new UpdateWindow { Owner = this }.ShowDialog();
+        new UpdateWindow(checkForUpdatesOnOpen: true) { Owner = this }.ShowDialog();
     }
 
     private async Task CheckForAvailableUpdateOnStartupAsync()
@@ -1017,16 +1446,31 @@ public partial class MainWindow : Window
 
     private void PrintCurrent_Click(object sender, RoutedEventArgs e)
     {
-        FurnitureGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        LabelGrid.CommitEdit(DataGridEditingUnit.Cell, true);
         Save();
-        PrintService.PrintFurniture(this, data, [CurrentFurniturePage], photoLibrary, CurrentCatalog.Layout, CurrentCatalog.Name);
+        PrintService.PrintLabels(this, data, [CurrentLabelPage], photoLibrary, CurrentCatalog.Layout, CurrentCatalog.Name);
+    }
+
+    private void Help_Click(object sender, RoutedEventArgs e)
+    {
+        new HelpWindow { Owner = this }.ShowDialog();
+    }
+
+    private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.F1)
+            return;
+
+        Help_Click(this, new RoutedEventArgs());
+        e.Handled = true;
     }
 
     private void PrintAll_Click(object sender, RoutedEventArgs e)
     {
-        FurnitureGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        LabelGrid.CommitEdit(DataGridEditingUnit.Cell, true);
         Save();
-        PrintService.PrintFurniture(this, data, CurrentCatalog.Lists, photoLibrary, CurrentCatalog.Layout, CurrentCatalog.Name);
+        PrintService.PrintLabels(this, data, CurrentCatalog.Lists, photoLibrary, CurrentCatalog.Layout,
+            CurrentCatalog.Name, showPageNumbers: true);
     }
 
     private void ShowActionMenu_Click(object sender, RoutedEventArgs e)
@@ -1034,46 +1478,214 @@ public partial class MainWindow : Window
         if (sender is not Button { ContextMenu: { } menu } button)
             return;
 
+        if (ReferenceEquals(openActionMenu, menu))
+        {
+            CloseActionMenu();
+            return;
+        }
+
+        CloseActionMenu();
+
+        menu.Width = double.NaN;
+        menu.MinWidth = button.ActualWidth;
+        menu.MaxWidth = Math.Max(button.ActualWidth, SystemParameters.WorkArea.Width - 24);
+        menu.MaxHeight = Math.Max(160, SystemParameters.WorkArea.Height * 0.75);
         menu.PlacementTarget = button;
         menu.Placement = PlacementMode.Bottom;
+        openActionMenu = menu;
         menu.IsOpen = true;
+    }
+
+    private void ActionMenu_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        var source = e.OriginalSource as DependencyObject;
+        if (openActionMenu?.PlacementTarget is Button placementTarget)
+        {
+            var clickedButton = FindVisualAncestor<Button>(source);
+            if (ReferenceEquals(clickedButton, placementTarget))
+            {
+                CloseActionMenu();
+                e.Handled = true;
+            }
+            else if (!ReferenceEquals(clickedButton?.ContextMenu, openActionMenu))
+            {
+                CloseActionMenu();
+            }
+        }
+
+        var clickedOutsideSearch = source is not null &&
+            !ReferenceEquals(source, SearchBoxContainer) &&
+            !SearchBoxContainer.IsAncestorOf(source);
+        if (clickedOutsideSearch)
+        {
+            if (SearchBox.IsKeyboardFocusWithin)
+                Keyboard.ClearFocus();
+            if (SearchResultsPopup.IsOpen)
+                CloseSearchResults();
+        }
+    }
+
+    private void CloseSearchResults()
+    {
+        if (SearchResultsPopup.IsOpen)
+            SearchResultsPopup.IsOpen = false;
+    }
+
+    private void CloseActionMenu()
+    {
+        var menu = openActionMenu;
+        openActionMenu = null;
+        if (menu?.IsOpen == true)
+            menu.IsOpen = false;
+    }
+
+    private void ActionMenu_Closed(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ContextMenu menu)
+            return;
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            if (ReferenceEquals(openActionMenu, menu) && !menu.IsOpen)
+                openActionMenu = null;
+        });
     }
 
     private void SaveCurrentAsPdf_Click(object sender, RoutedEventArgs e)
     {
-        FurnitureGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        LabelGrid.CommitEdit(DataGridEditingUnit.Cell, true);
         Save();
-        PrintService.SaveFurniturePdf(this, data, [CurrentFurniturePage], photoLibrary, CurrentFurniturePage.Name,
+        PrintService.SaveLabelsPdf(this, data, [CurrentLabelPage], photoLibrary, CurrentLabelPage.Name,
             CurrentCatalog.Layout, CurrentCatalog.Name);
     }
 
     private void SaveAllAsPdf_Click(object sender, RoutedEventArgs e)
     {
-        FurnitureGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        LabelGrid.CommitEdit(DataGridEditingUnit.Cell, true);
         Save();
-        PrintService.SaveFurniturePdf(this, data, CurrentCatalog.Lists, photoLibrary,
-            $"alle-listen-{CurrentCatalog.Name}", CurrentCatalog.Layout, CurrentCatalog.Name);
+        PrintService.SaveLabelsPdf(this, data, CurrentCatalog.Lists, photoLibrary,
+            $"alle-listen-{CurrentCatalog.Name}", CurrentCatalog.Layout, CurrentCatalog.Name,
+            showPageNumbers: true);
     }
 
-    private void QrBarcodeZip_Click(object sender, RoutedEventArgs e) =>
-        PrintService.ExportQrBarcodeZip(this, data, CurrentCatalog.Lists, CurrentCatalog.Layout, CurrentCatalog.Name);
+    private void SaveItemCode_Click(object sender, RoutedEventArgs e)
+    {
+        if (LabelGrid.SelectedItem is not CatalogGridRow row)
+            return;
+
+        LabelGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        LabelGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        var content = PrintService.GetQrContent(row.Item, CurrentCatalog.Layout);
+        var image = PrintService.CreateQrBarcodeBytes(row.Item, CurrentCatalog.Layout);
+        if (image.Length == 0)
+        {
+            MessageBox.Show(this, "Für diesen Eintrag ist kein QR-/Barcodewert vorhanden.",
+                "Code speichern", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = PrintService.IsBarcodeField(CurrentCatalog.Layout) ? "Barcode speichern" : "QR-Code speichern",
+            Filter = "PNG-Bild (*.png)|*.png",
+            FileName = $"{SafeFileName(content)}.png",
+            AddExtension = true
+        };
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        try
+        {
+            File.WriteAllBytes(dialog.FileName, image);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Der Code konnte nicht gespeichert werden.\n\n{ex.Message}",
+                "Speicherfehler", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void DownloadItemPhoto_Click(object sender, RoutedEventArgs e)
+    {
+        if (LabelGrid.SelectedItem is not CatalogGridRow row)
+            return;
+
+        var photoPath = FindItemPhotoPath(row.Item);
+        if (photoPath is null)
+        {
+            MessageBox.Show(this, "Für diesen Eintrag ist kein verfügbares Bild vorhanden.",
+                "Bild herunterladen", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var key = CurrentCatalog.Layout.Fields
+            .Where(field => field.Kind == "Photo")
+            .Select(field => row.Item.FieldValues.GetValueOrDefault(field.Id, ""))
+            .FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate) &&
+                string.Equals(photoLibrary.GetPhotoPath(data, candidate), photoPath, StringComparison.OrdinalIgnoreCase))
+            ?? row.Item.Photo;
+        data.PhotoNames.TryGetValue(key, out var photoName);
+        var extension = Path.GetExtension(photoPath);
+        var fileName = $"{SafeFileName(Path.GetFileNameWithoutExtension(photoName ?? photoPath))}{extension}";
+        var dialog = new SaveFileDialog
+        {
+            Title = "Bild herunterladen",
+            Filter = "Bilddateien (*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.tif;*.tiff;*.svg)|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.tif;*.tiff;*.svg|Alle Dateien (*.*)|*.*",
+            FileName = fileName,
+            AddExtension = true
+        };
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        try
+        {
+            File.Copy(photoPath, dialog.FileName, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Das Bild konnte nicht gespeichert werden.\n\n{ex.Message}",
+                "Speicherfehler", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private string? FindItemPhotoPath(CatalogItem item)
+    {
+        foreach (var field in CurrentCatalog.Layout.Fields.Where(field => field.Kind == "Photo"))
+        {
+            var key = item.FieldValues.GetValueOrDefault(field.Id, "");
+            if (string.IsNullOrWhiteSpace(key))
+                key = item.Photo;
+            var path = photoLibrary.GetPhotoPath(data, key);
+            if (path is not null)
+                return path;
+        }
+        return photoLibrary.GetPhotoPath(data, item.Photo);
+    }
+
+    private static string SafeFileName(string value)
+    {
+        var invalidCharacters = Path.GetInvalidFileNameChars();
+        var name = new string(value.Select(character =>
+            invalidCharacters.Contains(character) ? '_' : character).ToArray()).Trim();
+        return string.IsNullOrWhiteSpace(name) ? "Artikel" : name;
+    }
 
     private void ChoosePhoto_Click(object sender, RoutedEventArgs e)
     {
-        if (FurnitureGrid.SelectedItem is not CatalogGridRow row)
+        if (LabelGrid.SelectedItem is not CatalogGridRow row)
         {
             MessageBox.Show("Wähle zuerst einen Eintrag in der Liste aus.", "Foto auswählen",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var picker = new PhotoLibraryWindow(data, photoLibrary) { Owner = this };
+        var picker = new PhotoLibraryWindow(data, photoLibrary, PersistCatalogChanges) { Owner = this };
         picker.Closed += (_, _) =>
         {
             if (!picker.HasChanges)
                 return;
             Save();
-            RefreshFurnitureRows();
+            RefreshLabelRows();
             RefreshPrintPreview();
         };
         if (picker.ShowDialog() != true || picker.SelectedPhotoKey is null)
@@ -1085,21 +1697,47 @@ public partial class MainWindow : Window
         if (photoField is not null)
             item.FieldValues[photoField.Id] = picker.SelectedPhotoKey;
         Save();
-        RefreshFurnitureRows();
+        RefreshLabelRows();
         RefreshPrintPreview();
     }
 
     private void TogglePreview_Click(object sender, RoutedEventArgs e)
     {
         var showPreview = PreviewPanel.Visibility != Visibility.Visible;
+        if (!showPreview)
+            SavePreviewWidthRatio();
+
         PreviewPanel.Visibility = showPreview ? Visibility.Visible : Visibility.Collapsed;
         PreviewSplitter.Visibility = showPreview ? Visibility.Visible : Visibility.Collapsed;
-        EditorColumn.Width = showPreview ? new GridLength(3, GridUnitType.Star) : new GridLength(1, GridUnitType.Star);
+        EditorColumn.Width = showPreview
+            ? new GridLength(1 - previewWidthRatio, GridUnitType.Star)
+            : new GridLength(1, GridUnitType.Star);
         PreviewSplitterColumn.Width = showPreview ? new GridLength(6) : new GridLength(0);
-        PreviewColumn.Width = showPreview ? new GridLength(2, GridUnitType.Star) : new GridLength(0);
-        PreviewToggleButton.Content = showPreview ? "Vorschau ausblenden" : "Druckvorschau";
+        PreviewColumn.Width = showPreview
+            ? new GridLength(previewWidthRatio, GridUnitType.Star)
+            : new GridLength(0);
+        PreviewToggleIcon.Source = new System.Windows.Media.Imaging.BitmapImage(new Uri(
+            showPreview
+                ? "pack://application:,,,/assets/icons/eye-closed.png"
+                : "pack://application:,,,/assets/icons/eye.png"));
+        var actionName = showPreview ? "Vorschau ausblenden" : "Vorschau anzeigen";
+        PreviewToggleButton.ToolTip = actionName;
+        System.Windows.Automation.AutomationProperties.SetName(PreviewToggleButton, actionName);
         if (showPreview)
             RefreshPrintPreview();
+    }
+
+    private void PreviewSplitter_DragCompleted(object sender, DragCompletedEventArgs e) =>
+        SavePreviewWidthRatio();
+
+    private void SavePreviewWidthRatio()
+    {
+        var availableWidth = EditorColumn.ActualWidth + PreviewColumn.ActualWidth;
+        if (availableWidth <= 0 || PreviewColumn.ActualWidth <= 0)
+            return;
+
+        previewWidthRatio = Math.Clamp(PreviewColumn.ActualWidth / availableWidth, 0.2, 0.75);
+        store.SavePreviewWidthRatio(previewWidthRatio);
     }
 
     private void RefreshPrintPreview()
@@ -1114,27 +1752,27 @@ public partial class MainWindow : Window
 #if INTERNAL_DIAGNOSTICS
         using var diagnostic = AppDiagnostics.Measure(
             "preview.refresh",
-            () => $"items={CurrentFurniturePage.Items.Count};zoom={PrintPreviewViewer.Zoom:F1}");
+            () => $"items={CurrentLabelPage.Items.Count};zoom={PrintPreviewViewer.Zoom:F1}");
 #endif
 
         var layout = CurrentCatalog.Layout;
         var orientation = layout.Orientation == "Portrait" ? "Hochformat" : "Querformat";
-        PreviewDescription.Text = $"{layout.PaperFormat} · {orientation} · {CurrentCatalog.Name} · {CurrentFurniturePage.Name}";
-        var selectedItem = (FurnitureGrid.SelectedItem as CatalogGridRow)?.Item;
-        if (selectedItem is null || !CurrentFurniturePage.Items.Contains(selectedItem))
+        PreviewDescription.Text = $"{layout.PaperFormat} · {orientation} · {CurrentCatalog.Name} · {CurrentLabelPage.Name}";
+        var selectedItem = (LabelGrid.SelectedItem as CatalogGridRow)?.Item;
+        if (selectedItem is null || !CurrentLabelPage.Items.Contains(selectedItem))
             selectedItem = null;
-        previewFurnitureCells.Clear();
+        previewLabelCells.Clear();
         highlightedPreviewCell = null;
-        PrintPreviewViewer.Document = PrintService.CreateFurnitureDocument(
+        PrintPreviewViewer.Document = PrintService.CreateLabelDocument(
             data,
-            [CurrentFurniturePage],
+            [CurrentLabelPage],
             photoLibrary,
             selectedItem,
-            PreviewFurnitureItem_Clicked,
-            previewFurnitureCells,
+            PreviewLabelItem_Clicked,
+            previewLabelCells,
             layout,
             CurrentCatalog.Name);
-        highlightedPreviewCell = previewFurnitureCells.FirstOrDefault(
+        highlightedPreviewCell = previewLabelCells.FirstOrDefault(
             cell => ReferenceEquals(cell.Tag, selectedItem));
 
         Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, () =>
@@ -1148,21 +1786,21 @@ public partial class MainWindow : Window
         });
     }
 
-    private void UpdateFurniturePreviewHighlight()
+    private void UpdateLabelPreviewHighlight()
     {
 #if INTERNAL_DIAGNOSTICS
         using var diagnostic = AppDiagnostics.Measure(
             "preview.highlight",
-            () => $"cells={previewFurnitureCells.Count}");
+            () => $"cells={previewLabelCells.Count}");
 #endif
-        if (previewFurnitureCells.Count == 0)
+        if (previewLabelCells.Count == 0)
             return;
 
-        var selectedItem = (FurnitureGrid.SelectedItem as CatalogGridRow)?.Item;
-        if (selectedItem is not null && !CurrentFurniturePage.Items.Contains(selectedItem))
+        var selectedItem = (LabelGrid.SelectedItem as CatalogGridRow)?.Item;
+        if (selectedItem is not null && !CurrentLabelPage.Items.Contains(selectedItem))
             selectedItem = null;
-        highlightedPreviewCell = PrintService.UpdateFurniturePreviewHighlight(
-            previewFurnitureCells, selectedItem, highlightedPreviewCell);
+        highlightedPreviewCell = PrintService.UpdateLabelPreviewHighlight(
+            previewLabelCells, selectedItem, highlightedPreviewCell);
     }
 
     private void PrintPreviewViewer_Loaded(object sender, RoutedEventArgs e)
@@ -1304,8 +1942,7 @@ public partial class MainWindow : Window
             return IntPtr.Zero;
 
         var delta = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
-        previewScrollViewer.ScrollToHorizontalOffset(
-            previewScrollViewer.HorizontalOffset + delta * 0.5);
+        ScrollViewerWheelBehavior.ScrollBy(previewScrollViewer, horizontal: true, delta * 0.5);
         handled = true;
         return IntPtr.Zero;
     }
@@ -1358,6 +1995,9 @@ public sealed class CatalogGridRow : INotifyPropertyChanged
     public Dictionary<string, string> FieldValues => Item.FieldValues;
     public string? PhotoPath => PhotoPaths.Values.FirstOrDefault();
     public int Index { get; }
+    public string PositionText => IsDropPlaceholder ? "" : Index.ToString(CultureInfo.CurrentCulture);
+    public bool IsDropPlaceholder { get; init; }
+    public int DropIndex { get; init; } = -1;
     public string Title { get => Item.Title; set => Item.Title = value ?? ""; }
     public string Beco { get => Item.Beco; set => Item.Beco = value ?? ""; }
     public string Ref { get => Item.Ref; set => Item.Ref = value ?? ""; }
@@ -1397,6 +2037,45 @@ public sealed class CatalogGridRow : INotifyPropertyChanged
     private bool isDragTarget;
 }
 
+internal sealed class DragPreviewAdorner : Adorner
+{
+    private readonly BitmapSource image;
+    private readonly double scale;
+    private Point pointerPosition;
+
+    public DragPreviewAdorner(UIElement adornedElement, BitmapSource image) : base(adornedElement)
+    {
+        this.image = image;
+        scale = Math.Min(1, 520 / image.PixelWidth);
+        IsHitTestVisible = false;
+    }
+
+    public void SetPosition(Point position)
+    {
+        pointerPosition = position;
+        InvalidateVisual();
+    }
+
+    protected override void OnRender(DrawingContext drawingContext)
+    {
+        var width = image.PixelWidth * scale;
+        var height = image.PixelHeight * scale;
+        var left = Math.Clamp(pointerPosition.X + 14, 0, Math.Max(0, AdornedElement.RenderSize.Width - width));
+        var top = Math.Clamp(pointerPosition.Y + 12, 0, Math.Max(0, AdornedElement.RenderSize.Height - height));
+        var bounds = new Rect(left, top, width, height);
+
+        drawingContext.PushOpacity(0.82);
+        drawingContext.DrawImage(image, bounds);
+        drawingContext.DrawRoundedRectangle(
+            null,
+            new Pen(new SolidColorBrush(Color.FromRgb(36, 74, 115)), 1.5),
+            bounds,
+            4,
+            4);
+        drawingContext.Pop();
+    }
+}
+
 public sealed record SearchResultRow(
     EditorCatalog Catalog,
     int CatalogIndex,
@@ -1405,7 +2084,7 @@ public sealed record SearchResultRow(
     CatalogItem Item,
     int ItemIndex,
     string DisplayText);
-internal sealed record FurnitureSearchResult(CatalogPage Page, int PageIndex, CatalogItem Item, int ItemIndex);
+internal sealed record LabelSearchResult(CatalogPage Page, int PageIndex, CatalogItem Item, int ItemIndex);
 
 public sealed class TextPromptWindow : Window
 {
@@ -1415,7 +2094,9 @@ public sealed class TextPromptWindow : Window
     {
         Title = title;
         Width = 430;
-        Height = 190;
+        MinHeight = 170;
+        MaxHeight = Math.Max(220, SystemParameters.WorkArea.Height * 0.8);
+        SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Background = System.Windows.Media.Brushes.White;
@@ -1452,7 +2133,7 @@ public sealed class ConfirmationPromptWindow : Window
         Title = title;
         Width = 460;
         MinHeight = 160;
-        MaxHeight = 360;
+        MaxHeight = Math.Max(240, SystemParameters.WorkArea.Height * 0.8);
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -1478,11 +2159,17 @@ public sealed class ConfirmationPromptWindow : Window
         buttons.Children.Add(confirm);
         DockPanel.SetDock(buttons, Dock.Bottom);
         panel.Children.Add(buttons);
-        panel.Children.Add(new TextBlock
+        panel.Children.Add(new ScrollViewer
         {
-            Text = message,
-            TextWrapping = TextWrapping.Wrap,
-            VerticalAlignment = VerticalAlignment.Center
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            MaxHeight = Math.Max(140, SystemParameters.WorkArea.Height * 0.58),
+            Content = new TextBlock
+            {
+                Text = message,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Center
+            }
         });
 
         Content = panel;
