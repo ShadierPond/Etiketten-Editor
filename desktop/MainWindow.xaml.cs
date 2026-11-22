@@ -43,6 +43,7 @@ public partial class MainWindow : Window
     private Border? highlightedPreviewCell;
     private readonly DispatcherTimer previewZoomTimer;
     private readonly DispatcherTimer columnWidthSaveTimer;
+    private readonly DispatcherTimer labelDragScrollTimer;
     private int previewDocumentRevision;
     private HwndSource? windowSource;
     private UIElement? previewZoomAnchor;
@@ -57,6 +58,8 @@ public partial class MainWindow : Window
     private AdornerLayer? labelDragAdornerLayer;
     private int labelDropIndex = -1;
     private Point labelDragStartPoint;
+    private int labelDragScrollDirection;
+    private CatalogItem? labelClipboardItem;
     private readonly DispatcherTimer highlightTimer;
     private readonly CancellationTokenSource updateCheckCancellation = new();
 
@@ -82,6 +85,11 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromMilliseconds(50)
         };
         previewZoomTimer.Tick += PreviewZoomTimer_Tick;
+        labelDragScrollTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(90)
+        };
+        labelDragScrollTimer.Tick += LabelDragScrollTimer_Tick;
         columnWidthSaveTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(300)
@@ -263,9 +271,16 @@ public partial class MainWindow : Window
         return direction == ListSortDirection.Ascending ? comparison : -comparison;
     }
 
-    private static bool TryParseSortableNumber(string value, out decimal number) =>
-        decimal.TryParse(value, NumberStyles.Number, CultureInfo.CurrentCulture, out number) ||
-        decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out number);
+    private static bool TryParseSortableNumber(string value, out decimal number)
+    {
+        var normalizedValue = new string(value
+            .Where(character => !char.IsWhiteSpace(character) &&
+                char.GetUnicodeCategory(character) != UnicodeCategory.CurrencySymbol &&
+                character != '%')
+            .ToArray());
+        return decimal.TryParse(normalizedValue, NumberStyles.Number, CultureInfo.CurrentCulture, out number) ||
+               decimal.TryParse(normalizedValue, NumberStyles.Number, CultureInfo.InvariantCulture, out number);
+    }
 
     private CatalogGridRow CreateLabelGridRow(CatalogPage page, CatalogItem item, int index) =>
         new(
@@ -625,12 +640,71 @@ public partial class MainWindow : Window
     private void LabelGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         var cell = FindVisualAncestor<DataGridCell>(e.OriginalSource as DependencyObject);
-        if (cell?.Column.DisplayIndex != 0 ||
-            cell.DataContext is not CatalogGridRow { IsDropPlaceholder: false } row)
+        if (cell?.DataContext is not CatalogGridRow { IsDropPlaceholder: false } row)
             return;
 
-        labelDragSource = row;
-        labelDragStartPoint = e.GetPosition(LabelGrid);
+        LabelGrid.SelectedItem = row;
+        LabelGrid.CurrentCell = new DataGridCellInfo(row, cell.Column);
+        if (cell.Column.DisplayIndex == 0)
+        {
+            labelDragSource = row;
+            labelDragStartPoint = e.GetPosition(LabelGrid);
+        }
+    }
+
+    private void LabelGrid_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (FindVisualAncestor<TextBox>(e.OriginalSource as DependencyObject) is not null ||
+            LabelGrid.SelectedItem is not CatalogGridRow row ||
+            LabelGrid.CurrentCell.Column is not { } column ||
+            !labelColumnFieldIds.TryGetValue(column, out var fieldId))
+            return;
+
+        var field = CurrentCatalog.Layout.Fields.FirstOrDefault(candidate => candidate.Id == fieldId);
+        if (column is not DataGridTextColumn || field?.Kind is not ("Text" or "Number"))
+            return;
+
+        if (field.Kind == "Number" &&
+            !IsValidNumberFieldReplacement("", 0, 0, e.Text))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (!LabelGrid.BeginEdit())
+            return;
+
+        var editor = column.GetCellContent(row) as TextBox;
+        if (editor is null)
+            return;
+
+        editor.Text = e.Text;
+        editor.CaretIndex = editor.Text.Length;
+        editor.Focus();
+        e.Handled = true;
+    }
+
+    private void LabelGrid_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (FindVisualAncestor<TextBox>(e.OriginalSource as DependencyObject) is not null ||
+            (Keyboard.Modifiers & ModifierKeys.Control) == 0)
+            return;
+
+        switch (e.Key)
+        {
+            case Key.C:
+                CopySelectedLabelItem();
+                e.Handled = true;
+                break;
+            case Key.X:
+                CutSelectedLabelItem();
+                e.Handled = true;
+                break;
+            case Key.V:
+                PasteLabelItem();
+                e.Handled = true;
+                break;
+        }
     }
 
     private void LabelGrid_PreviewMouseMove(object sender, MouseEventArgs e)
@@ -670,6 +744,9 @@ public partial class MainWindow : Window
         var itemIndex = row.Page.Items.IndexOf(row.Item);
         MoveLabelUpMenuItem.IsEnabled = itemIndex > 0;
         MoveLabelDownMenuItem.IsEnabled = itemIndex >= 0 && itemIndex < row.Page.Items.Count - 1;
+        CopyLabelItemMenuItem.IsEnabled = true;
+        CutLabelItemMenuItem.IsEnabled = true;
+        PasteLabelItemMenuItem.IsEnabled = labelClipboardItem is not null;
         SaveItemCodeMenuItem.Header = PrintService.IsBarcodeField(CurrentCatalog.Layout)
             ? "Barcode speichern…"
             : "QR-Code speichern…";
@@ -681,8 +758,12 @@ public partial class MainWindow : Window
     private void LabelGrid_DragOver(object sender, DragEventArgs e)
     {
         if (e.Data.GetData(typeof(CatalogGridRow)) is not CatalogGridRow source)
+        {
+            SetLabelDragScrollDirection(0);
             return;
+        }
 
+        UpdateLabelDragAutoScroll(e);
         var targetRow = FindVisualAncestor<DataGridRow>(e.OriginalSource as DependencyObject);
         var target = targetRow?.Item as CatalogGridRow;
         var targetIndex = GetLabelDropIndex(source, targetRow, e.GetPosition(LabelGrid),
@@ -847,6 +928,7 @@ public partial class MainWindow : Window
 
     private void ResetLabelDrag()
     {
+        SetLabelDragScrollDirection(0);
         SetLabelDragTarget(null);
         if (labelDragAdorner is not null && labelDragAdornerLayer is not null)
             labelDragAdornerLayer.Remove(labelDragAdorner);
@@ -872,6 +954,56 @@ public partial class MainWindow : Window
 
         var currentIndex = row.Page.Items.IndexOf(row.Item);
         MoveLabelTo(row, currentIndex + direction);
+    }
+
+    private void LabelDragScrollTimer_Tick(object? sender, EventArgs e)
+    {
+        if (labelDragScrollDirection == 0)
+            return;
+
+        var scrollViewer = FindVisualChild<ScrollViewer>(LabelGrid);
+        if (scrollViewer is null || scrollViewer.ScrollableHeight <= 0)
+        {
+            SetLabelDragScrollDirection(0);
+            return;
+        }
+
+        var nextOffset = Math.Clamp(
+            scrollViewer.VerticalOffset + labelDragScrollDirection * 24,
+            0,
+            scrollViewer.ScrollableHeight);
+        var reachedBoundary = labelDragScrollDirection < 0
+            ? nextOffset <= 0
+            : nextOffset >= scrollViewer.ScrollableHeight;
+        scrollViewer.ScrollToVerticalOffset(nextOffset);
+        if (reachedBoundary)
+            SetLabelDragScrollDirection(0);
+    }
+
+    private void UpdateLabelDragAutoScroll(DragEventArgs e)
+    {
+        var scrollViewer = FindVisualChild<ScrollViewer>(LabelGrid);
+        if (scrollViewer is null)
+            return;
+
+        var pointer = e.GetPosition(scrollViewer);
+        const double edgeSize = 42;
+        var direction = pointer.Y < edgeSize
+            ? -1
+            : pointer.Y > scrollViewer.ViewportHeight - edgeSize ? 1 : 0;
+        if ((direction < 0 && scrollViewer.VerticalOffset <= 0) ||
+            (direction > 0 && scrollViewer.VerticalOffset >= scrollViewer.ScrollableHeight))
+            direction = 0;
+        SetLabelDragScrollDirection(direction);
+    }
+
+    private void SetLabelDragScrollDirection(int direction)
+    {
+        labelDragScrollDirection = direction;
+        if (direction == 0)
+            labelDragScrollTimer.Stop();
+        else if (!labelDragScrollTimer.IsEnabled)
+            labelDragScrollTimer.Start();
     }
 
     private void MoveLabelTo(CatalogGridRow row, int targetIndex)
@@ -1035,11 +1167,18 @@ public partial class MainWindow : Window
         var candidate = currentText.Remove(selectionStart, selectionLength)
             .Insert(selectionStart, replacement);
         var decimalSeparators = 0;
-        foreach (var character in candidate)
+        for (var index = 0; index < candidate.Length; index++)
         {
+            var character = candidate[index];
             if (char.IsDigit(character))
                 continue;
-            if (character == ',' && ++decimalSeparators <= 1)
+            if ((character is ',' or '.') && ++decimalSeparators <= 1)
+                continue;
+            if (char.IsWhiteSpace(character) ||
+                char.GetUnicodeCategory(character) == UnicodeCategory.CurrencySymbol ||
+                character == '%')
+                continue;
+            if ((character is '+' or '-') && index == 0)
                 continue;
             return false;
         }
@@ -1085,6 +1224,23 @@ public partial class MainWindow : Window
         if (name is null)
             return;
         CurrentLabelPage.Name = NonEmptyName(name, CurrentLabelPage.Name);
+        RefreshPages();
+        Save();
+    }
+
+    private void DuplicateLabelPage_Click(object sender, RoutedEventArgs e)
+    {
+        var source = CurrentLabelPage;
+        var name = PromptForUniqueName(
+            "Liste duplizieren",
+            "Name der neuen Liste",
+            source.Name,
+            CurrentCatalog.Lists.Select(page => page.Name));
+        if (name is null)
+            return;
+
+        CurrentCatalog.Lists.Insert(labelPageIndex + 1, CloneCatalogPage(source, name));
+        labelPageIndex++;
         RefreshPages();
         Save();
     }
@@ -1139,6 +1295,67 @@ public partial class MainWindow : Window
             .ToList()
     };
 
+    private static CatalogPage CloneCatalogPage(CatalogPage source, string name) => new()
+    {
+        Name = name,
+        Items = source.Items.Select(CloneCatalogItem).ToList()
+    };
+
+    private static EditorCatalog CloneCatalog(EditorCatalog source, string name) => new()
+    {
+        Id = Guid.NewGuid().ToString("N"),
+        Name = name,
+        Lists = source.Lists.Select(page => CloneCatalogPage(page, page.Name)).ToList(),
+        Layout = source.Layout.Copy(),
+        ColumnWidths = new Dictionary<string, double>(source.ColumnWidths)
+    };
+
+    private string? PromptForUniqueName(
+        string title,
+        string prompt,
+        string currentName,
+        IEnumerable<string> existingNames)
+    {
+        var names = existingNames.ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+        var suggestedName = CreateCopyName(currentName, names);
+        var initialValue = suggestedName;
+        while (true)
+        {
+            var value = TextPromptWindow.Show(this, title, prompt, initialValue);
+            if (value is null)
+                return null;
+
+            var name = value.Trim();
+            if (name.Length == 0)
+            {
+                MessageBox.Show(this, "Der Name darf nicht leer sein.", title,
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                initialValue = suggestedName;
+                continue;
+            }
+            if (names.Add(name))
+                return name;
+
+            MessageBox.Show(this, "Dieser Name wird bereits verwendet. Bitte wählen Sie einen anderen.",
+                title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            initialValue = name;
+        }
+    }
+
+    private static string CreateCopyName(string originalName, HashSet<string> existingNames)
+    {
+        var baseName = $"{originalName} - Kopie";
+        if (!existingNames.Contains(baseName))
+            return baseName;
+
+        for (var suffix = 2; ; suffix++)
+        {
+            var candidate = $"{baseName} {suffix}";
+            if (!existingNames.Contains(candidate))
+                return candidate;
+        }
+    }
+
     private void AddCatalog_Click(object sender, RoutedEventArgs e)
     {
         var name = TextPromptWindow.Show(this, "Neuen Katalog", "Name des Katalogs", "Neuer Katalog");
@@ -1155,6 +1372,25 @@ public partial class MainWindow : Window
         };
         data.Catalogs.Add(catalog);
         catalogIndex = data.Catalogs.Count - 1;
+        labelPageIndex = 0;
+        RefreshPages();
+        Save();
+    }
+
+    private void DuplicateCatalog_Click(object sender, RoutedEventArgs e)
+    {
+        PersistLabelColumnWidths();
+        var source = CurrentCatalog;
+        var name = PromptForUniqueName(
+            "Katalog duplizieren",
+            "Name des neuen Katalogs",
+            source.Name,
+            data.Catalogs.Select(catalog => catalog.Name));
+        if (name is null)
+            return;
+
+        data.Catalogs.Insert(catalogIndex + 1, CloneCatalog(source, name));
+        catalogIndex++;
         labelPageIndex = 0;
         RefreshPages();
         Save();
@@ -1207,6 +1443,99 @@ public partial class MainWindow : Window
         RefreshLabelRows();
         RefreshPrintPreview();
         Save();
+    }
+
+    private void CopyLabelItem_Click(object sender, RoutedEventArgs e) => CopySelectedLabelItem();
+
+    private void CutLabelItem_Click(object sender, RoutedEventArgs e) => CutSelectedLabelItem();
+
+    private void PasteLabelItem_Click(object sender, RoutedEventArgs e) => PasteLabelItem();
+
+    private void CopySelectedLabelItem()
+    {
+        if (LabelGrid.SelectedItem is not CatalogGridRow row)
+            return;
+
+        LabelGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        LabelGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        labelClipboardItem = CloneCatalogItem(row.Item);
+    }
+
+    private void CutSelectedLabelItem()
+    {
+        if (LabelGrid.SelectedItem is not CatalogGridRow row)
+            return;
+
+        LabelGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        LabelGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        var itemIndex = row.Page.Items.IndexOf(row.Item);
+        if (itemIndex < 0)
+            return;
+
+        labelClipboardItem = CloneCatalogItem(row.Item);
+        row.Page.Items.RemoveAt(itemIndex);
+        row.Page.Items.Add(new CatalogItem());
+        RefreshLabelRows();
+        SelectLabelItemAt(row.Page, itemIndex);
+        Save();
+        RefreshPrintPreview();
+    }
+
+    private void PasteLabelItem()
+    {
+        if (labelClipboardItem is null || LabelGrid.SelectedItem is not CatalogGridRow row)
+            return;
+
+        LabelGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        LabelGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        var itemIndex = row.Page.Items.IndexOf(row.Item);
+        if (itemIndex < 0)
+            return;
+
+        var lastItem = row.Page.Items[^1];
+        if (HasLabelData(lastItem) &&
+            !ConfirmationPromptWindow.Show(
+                this,
+                "Letzten Eintrag ersetzen?",
+                "Beim Einfügen wird der letzte Eintrag der Liste entfernt. Möchten Sie fortfahren?",
+                "Einfügen"))
+            return;
+
+        row.Page.Items.Insert(itemIndex, CloneCatalogItem(labelClipboardItem));
+        row.Page.Items.RemoveAt(row.Page.Items.Count - 1);
+        RefreshLabelRows();
+        SelectLabelItemAt(row.Page, itemIndex);
+        Save();
+        RefreshPrintPreview();
+    }
+
+    private static CatalogItem CloneCatalogItem(CatalogItem item) => new()
+    {
+        Title = item.Title,
+        Beco = item.Beco,
+        Ref = item.Ref,
+        Photo = item.Photo,
+        Price = item.Price,
+        Ek = item.Ek,
+        SalesPrice = item.SalesPrice,
+        RecommendedPrice = item.RecommendedPrice,
+        FieldValues = item.FieldValues is null ? [] : new Dictionary<string, string>(item.FieldValues),
+        AdditionalData = item.AdditionalData?.ToDictionary(entry => entry.Key, entry => entry.Value.Clone())
+    };
+
+    private void SelectLabelItemAt(CatalogPage page, int itemIndex)
+    {
+        if (page.Items.Count == 0)
+            return;
+
+        var selectedItem = page.Items[Math.Clamp(itemIndex, 0, page.Items.Count - 1)];
+        var selectedRow = LabelGrid.Items.OfType<CatalogGridRow>()
+            .FirstOrDefault(candidate => ReferenceEquals(candidate.Item, selectedItem));
+        if (selectedRow is null)
+            return;
+
+        LabelGrid.SelectedItem = selectedRow;
+        LabelGrid.ScrollIntoView(selectedRow);
     }
 
     private void DeleteLabelItem_Click(object sender, RoutedEventArgs e)
@@ -1920,6 +2249,7 @@ public partial class MainWindow : Window
         updateCheckCancellation.Cancel();
         updateCheckCancellation.Dispose();
         previewZoomTimer.Stop();
+        labelDragScrollTimer.Stop();
         AppDiagnostics.Event("mainWindow.closed");
         AppDiagnostics.StopUiThreadMonitor();
         windowSource?.RemoveHook(MainWindow_WindowMessage);

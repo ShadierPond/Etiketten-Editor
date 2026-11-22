@@ -6,7 +6,7 @@
     <Configurations>Debug;Release;InternalDebug</Configurations>
     <AssemblyName>EtikettenEditor</AssemblyName>
     <RootNamespace>LabelEditor.Desktop</RootNamespace>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
     <Company>Tariq Alsalem</Company>
     <Authors>Tariq Alsalem</Authors>
     <Product>Etiketten Editor</Product>
@@ -34,7 +34,10 @@
 
   <ItemGroup>
     <Compile Remove="LabelEditor.WinUI\**\*.cs" />
+    <Compile Remove="EtikettenEditor.Avalonia\**\*.cs" />
+    <Compile Remove="EtikettenEditor.PrintHost\**\*.cs" />
     <Page Remove="LabelEditor.WinUI\**\*.xaml" />
+    <Page Remove="EtikettenEditor.PrintHost\**\*.xaml" />
     <Resource Include="assets\EtikettenEditor.ico" />
     <Resource Include="assets\help\*.png" />
     <Resource Include="..\Icons\barcode-scan-icon.svg" Link="assets\icons\barcode-scan-icon.svg" />

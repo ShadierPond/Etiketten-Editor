@@ -160,6 +160,30 @@ public static class PrintService
     public static Border CreateLabelCellPreview(CatalogData catalog, CatalogItem item, PhotoLibrary photoLibrary, LabelPrintLayout layout) =>
         CreateLabelCell(catalog, item, photoLibrary, layout, showLayoutBounds: true);
 
+    public static double GetMaximumFittingFontSize(
+        CatalogItem item,
+        PrintElementLayout field,
+        LabelPrintLayout layout)
+    {
+        var text = GetFieldText(item, field, layout, showLayoutBounds: true);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            var placeholder = GetLayoutPreviewPlaceholder(field, GetQrValue(item, layout));
+            text = placeholder as string ?? "";
+        }
+        if (string.IsNullOrWhiteSpace(text))
+            return 24;
+
+        var sizeInDips = FitTextFontSize(
+            text,
+            24 * 96 / 72,
+            Cm(field.Width),
+            Cm(field.Height),
+            field.Bold ? FontWeights.Bold : FontWeights.Normal,
+            field.Italic ? FontStyles.Italic : FontStyles.Normal);
+        return sizeInDips * 72 / 96;
+    }
+
     public static void PrintEmployees(Window owner, IEnumerable<EmployeePage> branches, EmployeeLayout layout)
     {
         ShowPrintDialog(owner, CreateEmployeeDocument(branches, layout), "Mitarbeitendencodes");
@@ -539,7 +563,19 @@ public static class PrintService
             var text = (string)content;
             if (string.IsNullOrWhiteSpace(text))
                 return;
-            element = new TextBlock
+            var textAlignment = layout.TextAlignment switch
+            {
+                "TopLeft" or "MiddleLeft" or "BottomLeft" => TextAlignment.Left,
+                "TopRight" or "MiddleRight" or "BottomRight" => TextAlignment.Right,
+                _ => TextAlignment.Center
+            };
+            var verticalAlignment = layout.TextAlignment switch
+            {
+                "TopLeft" or "TopCenter" or "TopRight" => VerticalAlignment.Top,
+                "BottomLeft" or "BottomCenter" or "BottomRight" => VerticalAlignment.Bottom,
+                _ => VerticalAlignment.Center
+            };
+            var textBlock = new TextBlock
             {
                 Text = text,
                 FontSize = layout.AutoShrinkText != false
@@ -550,17 +586,19 @@ public static class PrintService
                 FontWeight = layout.Bold ? FontWeights.Bold : FontWeights.Normal,
                 FontStyle = layout.Italic ? FontStyles.Italic : FontStyles.Normal,
                 TextDecorations = layout.Underline ? TextDecorations.Underline : null,
-                TextAlignment = layout.TextAlignment switch
-                {
-                    "Left" => TextAlignment.Left,
-                    "Right" => TextAlignment.Right,
-                    _ => TextAlignment.Center
-                },
+                TextAlignment = textAlignment,
                 TextTrimming = layout.AutoShrinkText != false ? TextTrimming.None : TextTrimming.CharacterEllipsis,
                 TextWrapping = TextWrapping.Wrap,
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Center
+                Padding = new Thickness(0),
+                Margin = new Thickness(0),
+                LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+                LineHeight = layout.FontSize * 96 / 72,
+                VerticalAlignment = verticalAlignment,
+                HorizontalAlignment = HorizontalAlignment.Stretch
             };
+            var textContainer = new Grid { ClipToBounds = true };
+            textContainer.Children.Add(textBlock);
+            element = textContainer;
         }
 
         if (showLayoutBounds)
@@ -647,7 +685,8 @@ public static class PrintService
                 Brushes.Black,
                 1)
             {
-                MaxTextWidth = width
+                MaxTextWidth = width,
+                LineHeight = size
             };
             if (formatted.Height <= height && formatted.Width <= width)
                 return size;
@@ -805,8 +844,15 @@ public static class PrintService
                 : DisplayBecoText(item, layout.MissingBecoText);
         if (string.IsNullOrWhiteSpace(value))
             return "";
-        return field.Prefix + value.Trim() + field.Suffix;
+        value = value.Trim();
+        if (field.Kind == "Number" && ContainsUserEnteredNumberSymbol(value))
+            return value;
+        return field.Prefix + value + field.Suffix;
     }
+
+    private static bool ContainsUserEnteredNumberSymbol(string value) =>
+        value.Any(character =>
+            character == '%' || char.GetUnicodeCategory(character) == UnicodeCategory.CurrencySymbol);
 
     private static string GetSourceValue(CatalogItem item, LabelPrintLayout layout, string fieldId)
     {

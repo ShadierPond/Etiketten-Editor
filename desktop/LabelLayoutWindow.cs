@@ -394,13 +394,19 @@ public sealed class LabelLayoutWindow : Window
         textFormattingPanel.Children.Add(underlineCheckBox);
         textAlignmentSelector.ItemsSource = new[]
         {
-            new LayoutChoice("Links", "Left"),
-            new LayoutChoice("Mittig", "Center"),
-            new LayoutChoice("Rechts", "Right")
+            new LayoutChoice("Oben links", "TopLeft"),
+            new LayoutChoice("Oben mittig", "TopCenter"),
+            new LayoutChoice("Oben rechts", "TopRight"),
+            new LayoutChoice("Mitte links", "MiddleLeft"),
+            new LayoutChoice("Mitte", "Center"),
+            new LayoutChoice("Mitte rechts", "MiddleRight"),
+            new LayoutChoice("Unten links", "BottomLeft"),
+            new LayoutChoice("Unten mittig", "BottomCenter"),
+            new LayoutChoice("Unten rechts", "BottomRight")
         };
         textAlignmentSelector.DisplayMemberPath = nameof(LayoutChoice.Name);
         textAlignmentSelector.SelectedValuePath = nameof(LayoutChoice.Key);
-        textAlignmentSelector.Width = 105;
+        textAlignmentSelector.Width = 145;
         textAlignmentSelector.Height = 30;
         textAlignmentSelector.Margin = new Thickness(8, 0, 0, 0);
         textAlignmentSelector.ToolTip = "Textausrichtung";
@@ -826,7 +832,7 @@ public sealed class LabelLayoutWindow : Window
             return false;
 
         draft.CellWidthCm = Math.Clamp(cellWidth, 2, 5);
-        draft.CellHeightCm = Math.Clamp(cellHeight, 2, 5);
+        draft.CellHeightCm = Math.Clamp(cellHeight, 1, 5);
         draft.Normalize();
         return true;
     }
@@ -846,6 +852,8 @@ public sealed class LabelLayoutWindow : Window
         if (isUpdating)
             return;
         SaveSelectedElement();
+        if (!ReferenceEquals(sender, fontSizeBox))
+            RefreshFontSizeField();
         RefreshPreview();
     }
 
@@ -854,7 +862,19 @@ public sealed class LabelLayoutWindow : Window
         if (isUpdating)
             return;
         SaveSelectedElement();
+        if (!ReferenceEquals(sender, fontSizeBox))
+            RefreshFontSizeField();
         RefreshPreview();
+    }
+
+    private void RefreshFontSizeField()
+    {
+        if (currentElement is null)
+            return;
+
+        isUpdating = true;
+        fontSizeBox.Text = Format(currentElement.FontSize);
+        isUpdating = false;
     }
 
     private void MissingBecoText_Changed(object sender, TextChangedEventArgs e)
@@ -993,6 +1013,10 @@ public sealed class LabelLayoutWindow : Window
         element.AutoShrinkText = autoShrinkTextCheckBox.IsChecked == true;
         element.Prefix = fieldPrefixBox.Text;
         element.Suffix = fieldSuffixBox.Text;
+        if (supportsTextFormatting)
+            element.FontSize = Math.Min(
+                element.FontSize,
+                PrintService.GetMaximumFittingFontSize(sample, element, draft));
         if (!string.IsNullOrWhiteSpace(fieldNameBox.Text))
             element.Name = fieldNameBox.Text.Trim();
     }

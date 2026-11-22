@@ -395,7 +395,7 @@ public sealed class LabelPrintLayout
     public void Normalize()
     {
         CellWidthCm = Math.Clamp(double.IsFinite(CellWidthCm) ? CellWidthCm : 3.5, 2, 5);
-        CellHeightCm = Math.Clamp(double.IsFinite(CellHeightCm) ? CellHeightCm : 3.5, 2, 5);
+        CellHeightCm = Math.Clamp(double.IsFinite(CellHeightCm) ? CellHeightCm : 3.5, 1, 5);
         PaperFormat = PaperFormat switch
         {
             "A3" or "A4" or "A5" or "A6" or "Letter" or "Legal" => PaperFormat,
@@ -662,7 +662,11 @@ public sealed class PrintElementLayout
         Suffix ??= "";
         TextAlignment = TextAlignment switch
         {
-            "Left" or "Right" => TextAlignment,
+            "TopLeft" or "TopCenter" or "TopRight" or
+            "MiddleLeft" or "Center" or "MiddleRight" or
+            "BottomLeft" or "BottomCenter" or "BottomRight" => TextAlignment,
+            "Left" => "MiddleLeft",
+            "Right" => "MiddleRight",
             _ => "Center"
         };
         X = Math.Clamp(double.IsFinite(X) ? X : 0, 0, cellWidth);

@@ -365,6 +365,9 @@
                                                     <MenuItem Style="{StaticResource CompactModernMenuItem}" Header="Hinzufügen"
                                                               ToolTip="Einen neuen Katalog anlegen"
                                                               Click="AddCatalog_Click" />
+                                                    <MenuItem Style="{StaticResource CompactModernMenuItem}" Header="Duplizieren"
+                                                              ToolTip="Katalog mit Vorlage, Listen und Einträgen kopieren"
+                                                              Click="DuplicateCatalog_Click" />
                                                     <MenuItem Style="{StaticResource CompactModernMenuItem}" Header="Umbenennen"
                                                               ToolTip="Ausgewählten Katalog umbenennen"
                                                               Click="RenameCatalog_Click" />
@@ -401,6 +404,9 @@
                                                     <MenuItem Style="{StaticResource CompactModernMenuItem}" Header="Hinzufügen"
                                                               ToolTip="Eine neue Liste im Katalog anlegen"
                                                               Click="AddLabelPage_Click" />
+                                                    <MenuItem Style="{StaticResource CompactModernMenuItem}" Header="Duplizieren"
+                                                              ToolTip="Liste mit allen Einträgen kopieren"
+                                                              Click="DuplicateLabelPage_Click" />
                                                     <MenuItem Style="{StaticResource CompactModernMenuItem}" Header="Umbenennen"
                                                               ToolTip="Ausgewählte Liste umbenennen"
                                                               Click="RenameLabelPage_Click" />
@@ -425,6 +431,8 @@
                                       CellEditEnding="LabelGrid_CellEditEnding"
                                       PreparingCellForEdit="LabelGrid_PreparingCellForEdit"
                                       SelectionChanged="LabelGrid_SelectionChanged"
+                                      PreviewTextInput="LabelGrid_PreviewTextInput"
+                                      PreviewKeyDown="LabelGrid_PreviewKeyDown"
                                       PreviewMouseLeftButtonDown="LabelGrid_PreviewMouseLeftButtonDown"
                                       PreviewMouseMove="LabelGrid_PreviewMouseMove"
                                       PreviewMouseLeftButtonUp="LabelGrid_PreviewMouseLeftButtonUp"
@@ -437,6 +445,13 @@
                                                   Header="QR-/Barcode speichern…" Click="SaveItemCode_Click" />
                                         <MenuItem x:Name="DownloadItemPhotoMenuItem" Style="{StaticResource ModernMenuItem}"
                                                   Header="Bild herunterladen…" Click="DownloadItemPhoto_Click" />
+                                        <Separator />
+                                        <MenuItem x:Name="CopyLabelItemMenuItem" Style="{StaticResource ModernMenuItem}"
+                                                  Header="Eintrag kopieren" Click="CopyLabelItem_Click" />
+                                        <MenuItem x:Name="CutLabelItemMenuItem" Style="{StaticResource ModernMenuItem}"
+                                                  Header="Eintrag ausschneiden" Click="CutLabelItem_Click" />
+                                        <MenuItem x:Name="PasteLabelItemMenuItem" Style="{StaticResource ModernMenuItem}"
+                                                  Header="Eintrag einfügen" Click="PasteLabelItem_Click" />
                                         <Separator />
                                         <MenuItem Style="{StaticResource ModernMenuItem}" Header="Eintrag löschen"
                                                   Foreground="#B42318" Click="DeleteLabelItem_Click" />
